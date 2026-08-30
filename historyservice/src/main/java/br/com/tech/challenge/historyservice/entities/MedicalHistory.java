@@ -4,8 +4,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import br.com.tech.challenge.historyservice.domain.AppointmentStatus;
-import br.com.tech.challenge.historyservice.domain.EventType;
+import br.com.tech.challenge.historyservice.domain.AppointmentEventStatus;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -40,6 +39,10 @@ public class MedicalHistory {
     @Column(name = "event_id", nullable = false, unique = true, updatable = false)
     private UUID eventId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "event_status", nullable = false, length = 20, updatable = false)
+    private AppointmentEventStatus eventStatus;
+
     @Column(name = "appointment_id", nullable = false, updatable = false)
     private Long appointmentId;
 
@@ -58,16 +61,9 @@ public class MedicalHistory {
     @Column(name = "description", updatable = false)
     private String description;
 
-    @Column(name = "date_time", nullable = false, updatable = false)
-    private LocalDateTime dateTime;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20, updatable = false)
-    private AppointmentStatus status;
-
-    @Enumerated(EnumType.STRING)
-    @Column(name = "event_type", nullable = false, length = 20, updatable = false)
-    private EventType eventType;
+    /** Data e hora de inicio da consulta no momento deste evento. Nunca nula. */
+    @Column(name = "appointment_date", nullable = false, updatable = false)
+    private LocalDateTime appointmentDate;
 
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private Instant occurredAt;

@@ -7,8 +7,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import br.com.tech.challenge.historyservice.domain.AppointmentStatus;
-import br.com.tech.challenge.historyservice.domain.EventType;
+import br.com.tech.challenge.historyservice.domain.AppointmentEventStatus;
 import br.com.tech.challenge.historyservice.dto.AppointmentEventDTO;
 import br.com.tech.challenge.historyservice.entities.MedicalHistory;
 import br.com.tech.challenge.historyservice.repositories.MedicalHistoryRepository;
@@ -31,6 +30,8 @@ import static org.awaitility.Awaitility.await;
 @SpringBootTest
 @Import({PostgresTestcontainers.class, RabbitTestcontainers.class})
 class AppointmentEventListenerIT {
+
+    private static final LocalDateTime DATA_CONSULTA = LocalDateTime.of(2026, 9, 5, 9, 0);
 
     @Autowired
     private RabbitTemplate rabbitTemplate;
@@ -55,11 +56,11 @@ class AppointmentEventListenerIT {
         }
     }
 
-    private AppointmentEventDTO evento(UUID eventId, EventType tipo, AppointmentStatus status, Instant occurredAt) {
+    private AppointmentEventDTO evento(UUID eventId, AppointmentEventStatus eventStatus,
+                                       LocalDateTime appointmentDate, Instant occurredAt) {
         return new AppointmentEventDTO(
-                eventId, tipo, occurredAt, 42L, 10L, "Maria Souza",
-                7L, "Dr. Joao Lima", LocalDateTime.of(2026, 9, 5, 9, 0),
-                "Consulta de rotina", status);
+                eventId, eventStatus, occurredAt, 42L, 10L, "Maria Souza",
+                7L, "Dr. Joao Lima", appointmentDate, "Consulta de rotina");
     }
 
     @Test
@@ -67,40 +68,50 @@ class AppointmentEventListenerIT {
         UUID eventId = UUID.randomUUID();
 
         rabbitTemplate.convertAndSend(exchange, routingKey,
-                evento(eventId, EventType.CREATED, AppointmentStatus.SCHEDULED,
+                evento(eventId, AppointmentEventStatus.SCHEDULED, DATA_CONSULTA,
                         Instant.parse("2026-08-30T14:32:10Z")));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             List<MedicalHistory> registros = repository.findByAppointmentIdOrderByOccurredAtAsc(42L);
             assertThat(registros).hasSize(1);
             assertThat(registros.getFirst().getEventId()).isEqualTo(eventId);
-            assertThat(registros.getFirst().getStatus()).isEqualTo(AppointmentStatus.SCHEDULED);
+            assertThat(registros.getFirst().getEventStatus()).isEqualTo(AppointmentEventStatus.SCHEDULED);
+            assertThat(registros.getFirst().getAppointmentDate()).isEqualTo(DATA_CONSULTA);
             assertThat(registros.getFirst().getDoctorName()).isEqualTo("Dr. Joao Lima");
         });
     }
 
     @Test
-    void acumulaTrilhaAoReceberEventosSucessivosDoMesmoAppointment() {
+    void acumulaOCicloDeVidaDaConsulta() {
+        LocalDateTime novaData = LocalDateTime.of(2026, 9, 12, 14, 0);
+
         rabbitTemplate.convertAndSend(exchange, routingKey,
-                evento(UUID.randomUUID(), EventType.CREATED, AppointmentStatus.SCHEDULED,
+                evento(UUID.randomUUID(), AppointmentEventStatus.SCHEDULED, DATA_CONSULTA,
                         Instant.parse("2026-08-30T14:00:00Z")));
         rabbitTemplate.convertAndSend(exchange, routingKey,
-                evento(UUID.randomUUID(), EventType.UPDATED, AppointmentStatus.COMPLETED,
+                evento(UUID.randomUUID(), AppointmentEventStatus.RESCHEDULED, novaData,
                         Instant.parse("2026-08-30T15:00:00Z")));
+        rabbitTemplate.convertAndSend(exchange, routingKey,
+                evento(UUID.randomUUID(), AppointmentEventStatus.COMPLETED, novaData,
+                        Instant.parse("2026-09-12T17:00:00Z")));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> {
             List<MedicalHistory> trilha = repository.findByAppointmentIdOrderByOccurredAtAsc(42L);
-            assertThat(trilha).hasSize(2);
-            assertThat(trilha).extracting(MedicalHistory::getStatus)
-                    .containsExactly(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED);
+            assertThat(trilha).hasSize(3);
+            assertThat(trilha).extracting(MedicalHistory::getEventStatus)
+                    .containsExactly(AppointmentEventStatus.SCHEDULED,
+                            AppointmentEventStatus.RESCHEDULED,
+                            AppointmentEventStatus.COMPLETED);
+            assertThat(trilha).extracting(MedicalHistory::getAppointmentDate)
+                    .containsExactly(DATA_CONSULTA, novaData, novaData);
         });
     }
 
     @Test
     void naoDuplicaQuandoOMesmoEventoChegaDuasVezes() {
         UUID eventId = UUID.randomUUID();
-        AppointmentEventDTO mesmoEvento = evento(eventId, EventType.CREATED,
-                AppointmentStatus.SCHEDULED, Instant.parse("2026-08-30T14:32:10Z"));
+        AppointmentEventDTO mesmoEvento = evento(eventId, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, Instant.parse("2026-08-30T14:32:10Z"));
 
         rabbitTemplate.convertAndSend(exchange, routingKey, mesmoEvento);
         rabbitTemplate.convertAndSend(exchange, routingKey, mesmoEvento);
@@ -115,30 +126,50 @@ class AppointmentEventListenerIT {
 
     @Test
     void mandaParaDlqEventoComCampoDesconhecido() {
-        String payloadComCampoExtra = """
+        enviaJsonCru("""
                 {
                   "eventId": "%s",
-                  "eventType": "CREATED",
+                  "eventStatus": "SCHEDULED",
                   "occurredAt": "2026-08-30T14:32:10Z",
                   "appointmentId": 99,
                   "patientId": 10,
                   "doctorId": 7,
-                  "dateTime": "2026-09-05T09:00:00",
-                  "status": "SCHEDULED",
+                  "appointmentDate": "2026-09-05T09:00:00",
                   "campoInesperado": true
                 }
-                """.formatted(UUID.randomUUID());
-
-        Message mensagem = MessageBuilder
-                .withBody(payloadComCampoExtra.getBytes(StandardCharsets.UTF_8))
-                .setContentType(MessageProperties.CONTENT_TYPE_JSON)
-                .build();
-
-        rabbitTemplate.send(exchange, routingKey, mensagem);
+                """.formatted(UUID.randomUUID()));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(rabbitTemplate.receive(queue + ".dlq")).isNotNull());
 
         assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(99L)).isEmpty();
+    }
+
+    @Test
+    void mandaParaDlqEventoSemAppointmentDate() {
+        enviaJsonCru("""
+                {
+                  "eventId": "%s",
+                  "eventStatus": "CANCELLED",
+                  "occurredAt": "2026-08-30T14:32:10Z",
+                  "appointmentId": 77,
+                  "patientId": 10,
+                  "doctorId": 7
+                }
+                """.formatted(UUID.randomUUID()));
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                assertThat(rabbitTemplate.receive(queue + ".dlq")).isNotNull());
+
+        assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(77L)).isEmpty();
+    }
+
+    private void enviaJsonCru(String payload) {
+        Message mensagem = MessageBuilder
+                .withBody(payload.getBytes(StandardCharsets.UTF_8))
+                .setContentType(MessageProperties.CONTENT_TYPE_JSON)
+                .build();
+
+        rabbitTemplate.send(exchange, routingKey, mensagem);
     }
 }

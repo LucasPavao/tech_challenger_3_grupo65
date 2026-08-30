@@ -5,8 +5,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
-import br.com.tech.challenge.historyservice.domain.AppointmentStatus;
-import br.com.tech.challenge.historyservice.domain.EventType;
+import br.com.tech.challenge.historyservice.domain.AppointmentEventStatus;
 import br.com.tech.challenge.historyservice.entities.MedicalHistory;
 import br.com.tech.challenge.historyservice.support.PostgresTestcontainers;
 import org.junit.jupiter.api.Test;
@@ -24,10 +23,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(PostgresTestcontainers.class)
 class MedicalHistoryRepositoryTest {
 
+    private static final LocalDateTime DATA_CONSULTA = LocalDateTime.of(2026, 9, 5, 9, 0);
+
     @Autowired
     private MedicalHistoryRepository repository;
 
-    private MedicalHistory registro(UUID eventId, Long appointmentId, AppointmentStatus status, Instant occurredAt) {
+    private MedicalHistory registro(UUID eventId, Long appointmentId, AppointmentEventStatus eventStatus,
+                                    LocalDateTime appointmentDate, Instant occurredAt) {
         return MedicalHistory.builder()
                 .eventId(eventId)
                 .appointmentId(appointmentId)
@@ -36,9 +38,8 @@ class MedicalHistoryRepositoryTest {
                 .doctorId(7L)
                 .doctorName("Dr. Joao Lima")
                 .description("Consulta de rotina")
-                .dateTime(LocalDateTime.of(2026, 9, 5, 9, 0))
-                .status(status)
-                .eventType(EventType.CREATED)
+                .appointmentDate(appointmentDate)
+                .eventStatus(eventStatus)
                 .occurredAt(occurredAt)
                 .build();
     }
@@ -49,7 +50,7 @@ class MedicalHistoryRepositoryTest {
         Instant occurredAt = Instant.parse("2026-08-30T14:32:10Z");
 
         MedicalHistory salvo = repository.saveAndFlush(
-                registro(eventId, 42L, AppointmentStatus.SCHEDULED, occurredAt));
+                registro(eventId, 42L, AppointmentEventStatus.SCHEDULED, DATA_CONSULTA, occurredAt));
 
         assertThat(salvo.getId()).isNotNull();
         assertThat(salvo.getRecordedAt()).isNotNull();
@@ -60,22 +61,20 @@ class MedicalHistoryRepositoryTest {
         assertThat(salvo.getDoctorId()).isEqualTo(7L);
         assertThat(salvo.getDoctorName()).isEqualTo("Dr. Joao Lima");
         assertThat(salvo.getDescription()).isEqualTo("Consulta de rotina");
-        assertThat(salvo.getDateTime()).isEqualTo(LocalDateTime.of(2026, 9, 5, 9, 0));
-        assertThat(salvo.getStatus()).isEqualTo(AppointmentStatus.SCHEDULED);
-        assertThat(salvo.getEventType()).isEqualTo(EventType.CREATED);
+        assertThat(salvo.getAppointmentDate()).isEqualTo(DATA_CONSULTA);
+        assertThat(salvo.getEventStatus()).isEqualTo(AppointmentEventStatus.SCHEDULED);
         assertThat(salvo.getOccurredAt()).isEqualTo(occurredAt);
     }
 
     @Test
-    void aceitaNomesNulos() {
+    void aceitaNomesEDescricaoNulos() {
         MedicalHistory semNomes = MedicalHistory.builder()
                 .eventId(UUID.randomUUID())
                 .appointmentId(42L)
                 .patientId(10L)
                 .doctorId(7L)
-                .dateTime(LocalDateTime.of(2026, 9, 5, 9, 0))
-                .status(AppointmentStatus.CANCELLED)
-                .eventType(EventType.UPDATED)
+                .appointmentDate(DATA_CONSULTA)
+                .eventStatus(AppointmentEventStatus.CANCELLED)
                 .occurredAt(Instant.parse("2026-08-30T14:32:10Z"))
                 .build();
 
@@ -87,36 +86,73 @@ class MedicalHistoryRepositoryTest {
     }
 
     @Test
-    void rejeitaEventIdDuplicado() {
-        UUID mesmoEventId = UUID.randomUUID();
-        repository.saveAndFlush(registro(mesmoEventId, 42L, AppointmentStatus.SCHEDULED,
-                Instant.parse("2026-08-30T14:32:10Z")));
+    void rejeitaAppointmentDateNulo() {
+        MedicalHistory semData = MedicalHistory.builder()
+                .eventId(UUID.randomUUID())
+                .appointmentId(42L)
+                .patientId(10L)
+                .doctorId(7L)
+                .appointmentDate(null)
+                .eventStatus(AppointmentEventStatus.CANCELLED)
+                .occurredAt(Instant.parse("2026-08-30T14:32:10Z"))
+                .build();
 
-        assertThatThrownBy(() -> repository.saveAndFlush(
-                registro(mesmoEventId, 42L, AppointmentStatus.SCHEDULED,
-                        Instant.parse("2026-08-30T14:32:10Z"))))
+        assertThatThrownBy(() -> repository.saveAndFlush(semData))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 
     @Test
-    void acumulaVariasLinhasParaOMesmoAppointment() {
-        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentStatus.SCHEDULED,
-                Instant.parse("2026-08-30T14:00:00Z")));
-        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentStatus.COMPLETED,
-                Instant.parse("2026-08-30T15:00:00Z")));
+    void rejeitaEventIdDuplicado() {
+        UUID mesmoEventId = UUID.randomUUID();
+        repository.saveAndFlush(registro(mesmoEventId, 42L, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, Instant.parse("2026-08-30T14:32:10Z")));
+
+        assertThatThrownBy(() -> repository.saveAndFlush(
+                registro(mesmoEventId, 42L, AppointmentEventStatus.SCHEDULED,
+                        DATA_CONSULTA, Instant.parse("2026-08-30T14:32:10Z"))))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void guardaADataAnteriorAoRemarcar() {
+        LocalDateTime novaData = LocalDateTime.of(2026, 9, 12, 14, 0);
+
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, Instant.parse("2026-08-30T14:00:00Z")));
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.RESCHEDULED,
+                novaData, Instant.parse("2026-08-30T15:00:00Z")));
 
         List<MedicalHistory> trilha = repository.findByAppointmentIdOrderByOccurredAtAsc(42L);
 
         assertThat(trilha).hasSize(2);
-        assertThat(trilha).extracting(MedicalHistory::getStatus)
-                .containsExactly(AppointmentStatus.SCHEDULED, AppointmentStatus.COMPLETED);
+        assertThat(trilha).extracting(MedicalHistory::getEventStatus)
+                .containsExactly(AppointmentEventStatus.SCHEDULED, AppointmentEventStatus.RESCHEDULED);
+        assertThat(trilha).extracting(MedicalHistory::getAppointmentDate)
+                .containsExactly(DATA_CONSULTA, novaData);
+    }
+
+    @Test
+    void acumulaOCicloDeVidaCompletoDaConsulta() {
+        Instant t = Instant.parse("2026-08-30T14:00:00Z");
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, t));
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.RESCHEDULED,
+                DATA_CONSULTA.plusDays(7), t.plusSeconds(3600)));
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.COMPLETED,
+                DATA_CONSULTA.plusDays(7), t.plusSeconds(7200)));
+
+        assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(42L))
+                .extracting(MedicalHistory::getEventStatus)
+                .containsExactly(AppointmentEventStatus.SCHEDULED,
+                        AppointmentEventStatus.RESCHEDULED,
+                        AppointmentEventStatus.COMPLETED);
     }
 
     @Test
     void existsByEventIdEncontraRegistroGravado() {
         UUID eventId = UUID.randomUUID();
-        repository.saveAndFlush(registro(eventId, 42L, AppointmentStatus.SCHEDULED,
-                Instant.parse("2026-08-30T14:32:10Z")));
+        repository.saveAndFlush(registro(eventId, 42L, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, Instant.parse("2026-08-30T14:32:10Z")));
 
         assertThat(repository.existsByEventId(eventId)).isTrue();
         assertThat(repository.existsByEventId(UUID.randomUUID())).isFalse();

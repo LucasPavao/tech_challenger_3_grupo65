@@ -135,16 +135,15 @@ EVENT_ID=$(cat /proc/sys/kernel/random/uuid)
 cat > /tmp/evento.json <<EOF
 {
   "eventId": "$EVENT_ID",
-  "eventType": "CREATED",
+  "eventStatus": "SCHEDULED",
   "occurredAt": "2026-08-30T14:00:00Z",
   "appointmentId": 42,
   "patientId": 10,
   "patientName": "Maria Souza",
   "doctorId": 7,
   "doctorName": "Dr. Joao Lima",
-  "dateTime": "2026-09-05T09:00:00",
-  "description": "Consulta de rotina",
-  "status": "SCHEDULED"
+  "appointmentDate": "2026-09-05T09:00:00",
+  "description": "Consulta de rotina"
 }
 EOF
 
@@ -176,14 +175,14 @@ Payload.
 No log da aplicação aparece:
 
 ```
-INFO ... b.c.t.c.h.m.AppointmentEventListener : AppointmentEvent recebido: eventId=... appointmentId=42 tipo=CREATED
+INFO ... b.c.t.c.h.m.AppointmentEventListener : AppointmentEvent recebido: eventId=... appointmentId=42 status=SCHEDULED
 ```
 
 ### Conferir a persistência
 
 ```bash
 docker exec historyservice-postgres psql -U postgres -d mydatabase \
-  -c "SELECT appointment_id, status, event_type, occurred_at, recorded_at FROM medical_history ORDER BY occurred_at;"
+  -c "SELECT appointment_id, event_status, appointment_date, occurred_at FROM medical_history ORDER BY occurred_at;"
 ```
 
 E a profundidade das filas:
@@ -200,9 +199,10 @@ Com apenas eventos válidos publicados, `history.queue` e `history.queue.dlq` fi
 |---|---|
 | Evento válido | 1 linha nova em `medical_history` |
 | O **mesmo `eventId`** de novo | nenhuma linha nova; log `WARN "Evento ... ja processado"` |
-| Outro `eventId`, mesmo `appointmentId` | 2ª linha — é a trilha da consulta |
+| Outro `eventId` e `eventStatus: "RESCHEDULED"` com nova `appointmentDate` | 2ª linha — a data antiga continua na 1ª |
+| `eventStatus: "COMPLETED"` | 3ª linha, fechando o ciclo de vida da consulta |
 | Um campo fora do contrato (ex.: `"campoInesperado": true`) | nada persistido; +1 em `history.queue.dlq` |
-| Sem `status` | nada persistido; +1 em `history.queue.dlq` |
+| Sem `appointmentDate` ou sem `eventStatus` | nada persistido; +1 em `history.queue.dlq` |
 
 Para inspecionar o que caiu na DLQ: **Queues** → `history.queue.dlq` → **Get messages**.
 
@@ -211,9 +211,11 @@ Para inspecionar o que caiu na DLQ: **Queues** → `history.queue.dlq` → **Get
 | Coluna | Origem |
 |---|---|
 | `event_id` | do evento — `UNIQUE`, deduplica reentregas do RabbitMQ |
+| `event_status` | a transição declarada: `SCHEDULED`, `RESCHEDULED`, `CANCELLED` ou `COMPLETED` |
 | `appointment_id`, `patient_id`, `doctor_id` | do evento — apenas IDs, sem relacionamento JPA entre serviços |
 | `patient_name`, `doctor_name` | snapshot opcional do evento (podem ser `NULL`) |
-| `status`, `event_type`, `occurred_at` | estado e instante no momento do evento |
+| `appointment_date` | início da consulta no momento do evento — `NOT NULL`, inclusive em cancelamento |
+| `occurred_at` | quando o evento ocorreu no produtor; ordena a trilha |
 | `recorded_at` | quando o `history-service` gravou |
 
 ## 6. Rodar os testes

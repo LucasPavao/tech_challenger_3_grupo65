@@ -28,8 +28,8 @@ class MedicalHistorySchemaTest {
 
         assertThat(colunas).containsExactlyInAnyOrder(
                 "id", "event_id", "appointment_id", "patient_id", "patient_name",
-                "doctor_id", "doctor_name", "description", "date_time", "status",
-                "event_type", "occurred_at", "recorded_at");
+                "doctor_id", "doctor_name", "description", "appointment_date",
+                "event_status", "occurred_at", "recorded_at");
     }
 
     @Test

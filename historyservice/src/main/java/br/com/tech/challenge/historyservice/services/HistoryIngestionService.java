@@ -58,16 +58,15 @@ public class HistoryIngestionService {
     private MedicalHistory toEntity(AppointmentEventDTO evento) {
         return MedicalHistory.builder()
                 .eventId(evento.eventId())
-                .eventType(evento.eventType())
+                .eventStatus(evento.eventStatus())
                 .occurredAt(evento.occurredAt())
                 .appointmentId(evento.appointmentId())
                 .patientId(evento.patientId())
                 .patientName(evento.patientName())
                 .doctorId(evento.doctorId())
                 .doctorName(evento.doctorName())
-                .dateTime(evento.dateTime())
+                .appointmentDate(evento.appointmentDate())
                 .description(evento.description())
-                .status(evento.status())
                 .build();
     }
 }

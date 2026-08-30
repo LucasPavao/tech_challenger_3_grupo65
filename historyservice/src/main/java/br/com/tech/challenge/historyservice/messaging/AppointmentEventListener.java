@@ -25,8 +25,8 @@ public class AppointmentEventListener {
 
     @RabbitListener(queues = "${app.rabbitmq.queue}")
     public void onAppointmentEvent(AppointmentEventDTO evento) {
-        log.info("AppointmentEvent recebido: eventId={} appointmentId={} tipo={}",
-                evento.eventId(), evento.appointmentId(), evento.eventType());
+        log.info("AppointmentEvent recebido: eventId={} appointmentId={} status={}",
+                evento.eventId(), evento.appointmentId(), evento.eventStatus());
         ingestionService.ingest(evento);
     }
 }

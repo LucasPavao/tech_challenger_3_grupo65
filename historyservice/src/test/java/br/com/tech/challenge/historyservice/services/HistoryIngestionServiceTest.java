@@ -4,8 +4,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
-import br.com.tech.challenge.historyservice.domain.AppointmentStatus;
-import br.com.tech.challenge.historyservice.domain.EventType;
+import br.com.tech.challenge.historyservice.domain.AppointmentEventStatus;
 import br.com.tech.challenge.historyservice.dto.AppointmentEventDTO;
 import br.com.tech.challenge.historyservice.entities.MedicalHistory;
 import br.com.tech.challenge.historyservice.repositories.MedicalHistoryRepository;
@@ -33,6 +32,7 @@ class HistoryIngestionServiceTest {
 
     private static final UUID EVENT_ID = UUID.fromString("8f14e45f-ceea-467a-9f4b-1d2c3e4f5a6b");
     private static final Instant OCCURRED_AT = Instant.parse("2026-08-30T14:32:10Z");
+    private static final LocalDateTime DATA_CONSULTA = LocalDateTime.of(2026, 9, 5, 9, 0);
 
     private static ValidatorFactory validatorFactory;
 
@@ -52,15 +52,13 @@ class HistoryIngestionServiceTest {
     @BeforeEach
     void setUp() {
         repository = mock(MedicalHistoryRepository.class);
-        Validator validator = validatorFactory.getValidator();
-        service = new HistoryIngestionService(repository, validator);
+        service = new HistoryIngestionService(repository, validatorFactory.getValidator());
     }
 
     private AppointmentEventDTO evento(String patientName, String doctorName) {
         return new AppointmentEventDTO(
-                EVENT_ID, EventType.CREATED, OCCURRED_AT, 42L, 10L, patientName,
-                7L, doctorName, LocalDateTime.of(2026, 9, 5, 9, 0),
-                "Consulta de rotina", AppointmentStatus.SCHEDULED);
+                EVENT_ID, AppointmentEventStatus.SCHEDULED, OCCURRED_AT, 42L, 10L, patientName,
+                7L, doctorName, DATA_CONSULTA, "Consulta de rotina");
     }
 
     @Test
@@ -72,16 +70,15 @@ class HistoryIngestionServiceTest {
         MedicalHistory salvo = captor.getValue();
 
         assertThat(salvo.getEventId()).isEqualTo(EVENT_ID);
-        assertThat(salvo.getEventType()).isEqualTo(EventType.CREATED);
+        assertThat(salvo.getEventStatus()).isEqualTo(AppointmentEventStatus.SCHEDULED);
         assertThat(salvo.getOccurredAt()).isEqualTo(OCCURRED_AT);
         assertThat(salvo.getAppointmentId()).isEqualTo(42L);
         assertThat(salvo.getPatientId()).isEqualTo(10L);
         assertThat(salvo.getPatientName()).isEqualTo("Maria Souza");
         assertThat(salvo.getDoctorId()).isEqualTo(7L);
         assertThat(salvo.getDoctorName()).isEqualTo("Dr. Joao Lima");
-        assertThat(salvo.getDateTime()).isEqualTo(LocalDateTime.of(2026, 9, 5, 9, 0));
+        assertThat(salvo.getAppointmentDate()).isEqualTo(DATA_CONSULTA);
         assertThat(salvo.getDescription()).isEqualTo("Consulta de rotina");
-        assertThat(salvo.getStatus()).isEqualTo(AppointmentStatus.SCHEDULED);
     }
 
     @Test
@@ -113,15 +110,27 @@ class HistoryIngestionServiceTest {
     }
 
     @Test
-    void rejeitaEventoSemCampoObrigatorio() {
+    void rejeitaEventoSemEventStatus() {
         AppointmentEventDTO semStatus = new AppointmentEventDTO(
-                EVENT_ID, EventType.CREATED, OCCURRED_AT, 42L, 10L, "Maria Souza",
-                7L, "Dr. Joao Lima", LocalDateTime.of(2026, 9, 5, 9, 0),
-                "Consulta de rotina", null);
+                EVENT_ID, null, OCCURRED_AT, 42L, 10L, "Maria Souza",
+                7L, "Dr. Joao Lima", DATA_CONSULTA, "Consulta de rotina");
 
         assertThatThrownBy(() -> service.ingest(semStatus))
                 .isInstanceOf(ConstraintViolationException.class)
-                .hasMessageContaining("status");
+                .hasMessageContaining("eventStatus");
+
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void rejeitaEventoSemAppointmentDate() {
+        AppointmentEventDTO semData = new AppointmentEventDTO(
+                EVENT_ID, AppointmentEventStatus.CANCELLED, OCCURRED_AT, 42L, 10L, "Maria Souza",
+                7L, "Dr. Joao Lima", null, "Cancelada pelo paciente");
+
+        assertThatThrownBy(() -> service.ingest(semData))
+                .isInstanceOf(ConstraintViolationException.class)
+                .hasMessageContaining("appointmentDate");
 
         verify(repository, never()).save(any());
     }
