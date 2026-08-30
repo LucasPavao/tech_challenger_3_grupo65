@@ -187,15 +187,71 @@ Contrato da mensagem: [`docs/messaging/appointment-event.md`](docs/messaging/app
 
 ### Testar a ingestão manualmente
 
-Com a infraestrutura no ar (`docker compose up -d`) e a aplicação rodando, publique pelo console do
-RabbitMQ (http://localhost:15672, `guest`/`guest`) na exchange `history.exchange` com routing key
-`history.created`, usando `content_type: application/json` e o payload documentado em
-`docs/messaging/appointment-event.md`. Confira o resultado:
+**1. Suba a infraestrutura e a aplicação**
 
 ```bash
-docker exec -it historyservice-postgres \
-  psql -U postgres -d mydatabase -c "SELECT event_id, appointment_id, status, occurred_at FROM medical_history ORDER BY recorded_at;"
+docker compose up -d
+set -a; . ./.env; set +a
+./mvnw spring-boot:run
 ```
+
+Aguarde a linha `Started HistoryApplication`. A aplicação declara a exchange, a fila e a DLQ na
+subida — não é preciso criar nada no console do RabbitMQ.
+
+**2. Publique um evento**
+
+Pela API de management (não exige nenhuma ferramenta além do `curl`):
+
+```bash
+EVENT_ID=$(cat /proc/sys/kernel/random/uuid)
+
+curl -s -u guest:guest -H 'content-type: application/json' \
+  -X POST http://localhost:15672/api/exchanges/%2F/history.exchange/publish \
+  -d "{
+    \"properties\": {\"content_type\": \"application/json\", \"delivery_mode\": 2},
+    \"routing_key\": \"history.created\",
+    \"payload_encoding\": \"string\",
+    \"payload\": \"{\\\"eventId\\\":\\\"$EVENT_ID\\\",\\\"eventType\\\":\\\"CREATED\\\",\\\"occurredAt\\\":\\\"2026-08-30T14:00:00Z\\\",\\\"appointmentId\\\":42,\\\"patientId\\\":10,\\\"patientName\\\":\\\"Maria Souza\\\",\\\"doctorId\\\":7,\\\"doctorName\\\":\\\"Dr. Joao Lima\\\",\\\"dateTime\\\":\\\"2026-09-05T09:00:00\\\",\\\"description\\\":\\\"Consulta de rotina\\\",\\\"status\\\":\\\"SCHEDULED\\\"}\"
+  }"
+```
+
+Resposta esperada: `{"routed":true}`.
+
+Alternativa pelo console web (http://localhost:15672, `guest`/`guest`): aba **Exchanges** →
+`history.exchange` → **Publish message**, com routing key `history.created`, a propriedade
+`content_type` = `application/json` e o JSON documentado em
+[`docs/messaging/appointment-event.md`](docs/messaging/appointment-event.md) no campo Payload.
+
+> Não é preciso enviar o header `__TypeId__`. O Spring AMQP infere o tipo pelo parâmetro do
+> listener, então um produtor não-Spring publica normalmente.
+
+**3. Confira a persistência**
+
+```bash
+docker exec historyservice-postgres psql -U postgres -d mydatabase \
+  -c "SELECT appointment_id, status, event_type, occurred_at, recorded_at FROM medical_history ORDER BY occurred_at;"
+```
+
+**4. Confira as filas**
+
+```bash
+curl -s -u guest:guest 'http://localhost:15672/api/queues/%2F?columns=name,messages' | python3 -m json.tool
+```
+
+`history.queue` deve estar em `0` (tudo consumido) e `history.queue.dlq` em `0` enquanto você só
+publicar eventos válidos.
+
+### Cenários que valem testar
+
+| Publique | Resultado esperado |
+|---|---|
+| Evento válido | 1 linha nova em `medical_history` |
+| O **mesmo `eventId`** de novo | nenhuma linha nova; log `WARN "Evento ... ja processado"` |
+| Outro `eventId`, mesmo `appointmentId` | 2ª linha — é a trilha da consulta |
+| Um campo fora do contrato (ex.: `"campoInesperado": true`) | nada persistido; +1 em `history.queue.dlq` |
+| Sem `status` | nada persistido; +1 em `history.queue.dlq` |
+
+Para inspecionar o que caiu na DLQ, use o console: **Queues** → `history.queue.dlq` → **Get messages**.
 
 ### Rodar os testes
 
