@@ -166,3 +166,41 @@ docker compose down -v    # remove também os volumes (banco e fila zerados)
 | Fila com `0 consumers` | aplicação não conectou | conferir o log de inicialização e as credenciais AMQP |
 | Mensagem publicada mas nada no log | payload não é JSON ou `content_type` ausente | publicar com `content_type: application/json`; conferir a `history.queue.dlq` |
 | `variable is not set` no `docker compose up` | falta o `.env` | `cp .env.example .env` |
+
+## Histórico médico (Fase 1 — ingestão)
+
+O `history-service` é um log **append-only**: cada `AppointmentEvent` recebido do RabbitMQ vira uma
+linha nova em `medical_history`. Nenhum registro é atualizado ou apagado, então o histórico de uma
+consulta é o conjunto das suas linhas ordenado por `occurred_at`.
+
+Contrato da mensagem: [`docs/messaging/appointment-event.md`](docs/messaging/appointment-event.md).
+
+### Tabela `medical_history`
+
+| Coluna | Origem |
+|---|---|
+| `event_id` | do evento — `UNIQUE`, deduplica reentregas do RabbitMQ |
+| `appointment_id`, `patient_id`, `doctor_id` | do evento — apenas IDs, sem relacionamento JPA entre serviços |
+| `patient_name`, `doctor_name` | snapshot opcional do evento (podem ser `NULL`) |
+| `status`, `event_type`, `occurred_at` | estado e instante no momento do evento |
+| `recorded_at` | quando o `history-service` gravou |
+
+### Testar a ingestão manualmente
+
+Com a infraestrutura no ar (`docker compose up -d`) e a aplicação rodando, publique pelo console do
+RabbitMQ (http://localhost:15672, `guest`/`guest`) na exchange `history.exchange` com routing key
+`history.created`, usando `content_type: application/json` e o payload documentado em
+`docs/messaging/appointment-event.md`. Confira o resultado:
+
+```bash
+docker exec -it historyservice-postgres \
+  psql -U postgres -d mydatabase -c "SELECT event_id, appointment_id, status, occurred_at FROM medical_history ORDER BY recorded_at;"
+```
+
+### Rodar os testes
+
+Precisa de Docker em execução — os testes sobem Postgres e RabbitMQ descartáveis via Testcontainers.
+
+```bash
+./mvnw test
+```
