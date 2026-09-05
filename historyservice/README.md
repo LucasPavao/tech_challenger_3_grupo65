@@ -116,6 +116,28 @@ Com eventos válidos, `history.queue` e `history.queue.dlq` ficam ambas em `0`.
 
 Para ver o que caiu na DLQ: **Queues → `history.queue.dlq` → Get messages**.
 
+### Collection do Postman
+
+[`docs/postman/history-service.postman_collection.json`](docs/postman/history-service.postman_collection.json)
+— importe no Postman (**Import → File**). Ela cobre o fluxo inteiro em duas pastas:
+
+1. **Publicar eventos** — o ciclo de vida da consulta, a reentrega duplicada, os dois casos de DLQ
+   e uma leitura da DLQ que mostra os payloads rejeitados
+2. **Consultar por GraphQL** — as duas queries e os casos de borda
+
+Cada requisição tem asserts, então dá para rodar tudo de uma vez no **Collection Runner** (use
+*Delay* de 800 ms — a ingestão passa pelo RabbitMQ e é assíncrona). Pela linha de comando:
+
+```bash
+npx newman run docs/postman/history-service.postman_collection.json --delay-request 800
+```
+
+Para repetir do zero, limpe a tabela antes — senão a pasta 1 acrescenta linhas à trilha:
+
+```bash
+docker exec historyservice-postgres psql -U postgres -d mydatabase -c 'TRUNCATE medical_history;'
+```
+
 ## Rodar os testes automatizados
 
 Basta ter o **Docker em execução** — os testes sobem Postgres e RabbitMQ descartáveis via
