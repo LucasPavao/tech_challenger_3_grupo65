@@ -1,0 +1,754 @@
+{
+  "info": {
+    "name": "History Service — Tech Challenge Fase 3 (Grupo 65)",
+    "description": "Servico de historico medico: consome AppointmentEvent do RabbitMQ e expoe o historico por GraphQL.\n\n**E um log append-only** — cada evento vira uma linha nova, nada e atualizado ou apagado. Uma consulta agendada, remarcada e concluida tem 3 linhas, e a data original continua visivel na primeira.\n\n## Como usar\n\n1. Suba o ambiente: `docker compose up -d`, depois `./mvnw spring-boot:run`\n2. Rode a pasta **1. Publicar eventos** na ordem\n3. Rode a pasta **2. Consultar por GraphQL**\n\nOu rode a collection inteira no Collection Runner — as pastas estao na ordem certa e cada requisicao tem asserts. Use **Delay 800 ms** entre requisicoes: a ingestao passa pelo RabbitMQ e e assincrona.\n\n> Rodar a collection duas vezes seguidas faz a pasta 1 publicar eventos novos (eventId e {{$guid}}), o que acrescenta linhas a trilha e faz a query 2 falhar por esperar exatamente 3. Para repetir do zero, limpe a tabela:\n> ```\n> docker exec historyservice-postgres psql -U postgres -d mydatabase -c 'TRUNCATE medical_history;'\n> ```\n\nEndpoint GraphQL: `{{baseUrl}}/graphql` · IDE web para explorar o schema: `{{baseUrl}}/graphiql`",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "description": "aplicacao Spring"
+    },
+    {
+      "key": "rabbitUrl",
+      "value": "http://localhost:15672",
+      "description": "console/API do RabbitMQ"
+    },
+    {
+      "key": "rabbitUser",
+      "value": "guest"
+    },
+    {
+      "key": "rabbitPassword",
+      "value": "guest"
+    },
+    {
+      "key": "exchange",
+      "value": "history.exchange"
+    },
+    {
+      "key": "queue",
+      "value": "history.queue"
+    },
+    {
+      "key": "routingKey",
+      "value": "history.created"
+    },
+    {
+      "key": "patientId",
+      "value": "10"
+    },
+    {
+      "key": "appointmentId",
+      "value": "42",
+      "description": "consulta do ciclo de vida (eventos 1-3)"
+    },
+    {
+      "key": "appointmentIdIdempotencia",
+      "value": "43",
+      "description": "consulta separada para o teste de reentrega, para nao poluir a trilha de 42"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Publicar eventos (RabbitMQ)",
+      "description": "Publica AppointmentEvent na exchange via API de management do RabbitMQ.\n\nRode 1, 2 e 3 na ordem para montar o ciclo de vida da consulta 42. A 4 exercita idempotencia (rode duas vezes), 5 e 6 exercitam a DLQ, e a 7 confere.",
+      "item": [
+        {
+          "name": "1. SCHEDULED — agenda a consulta 42",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"SCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-08-30T14:00:00Z\\\", \\\"appointmentId\\\": \\\"{{appointmentId}}\\\", \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-09-05T09:00:00\\\", \\\"description\\\": \\\"Consulta de rotina\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "Primeiro evento do ciclo de vida. Gera a 1a linha em medical_history.\n\nRepare no occurredAt: cada evento do ciclo tem um instante DISTINTO e crescente. E ele que ordena a trilha."
+          }
+        },
+        {
+          "name": "2. RESCHEDULED — remarca para 12/09",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"RESCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-08-31T10:00:00Z\\\", \\\"appointmentId\\\": \\\"{{appointmentId}}\\\", \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-09-12T14:00:00\\\", \\\"description\\\": \\\"Consulta de rotina\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "Nova data. A anterior NAO e sobrescrita: vira a 2a linha, e a data de 05/09 continua visivel no appointmentTimeline."
+          }
+        },
+        {
+          "name": "3. COMPLETED — conclui o atendimento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"COMPLETED\\\", \\\"occurredAt\\\": \\\"2026-09-12T15:00:00Z\\\", \\\"appointmentId\\\": \\\"{{appointmentId}}\\\", \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-09-12T14:00:00\\\", \\\"description\\\": \\\"Consulta de rotina\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "Fecha o ciclo. 3a linha, e passa a ser o estado atual no patientHistory."
+          }
+        },
+        {
+          "name": "4. Reentrega do mesmo eventId (idempotencia)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"11111111-1111-1111-1111-111111111111\\\", \\\"eventStatus\\\": \\\"SCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-09-20T09:00:00Z\\\", \\\"appointmentId\\\": \\\"{{appointmentIdIdempotencia}}\\\", \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-10-01T08:00:00\\\", \\\"description\\\": \\\"Consulta de rotina\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "**Rode esta requisicao DUAS vezes.**\n\nO eventId e fixo (nao {{$guid}}), entao o 2o envio e uma reentrega. A 1a vez cria a linha; a 2a e ignorada, com log WARN 'Evento ... ja processado'.\n\nUsa a consulta {{appointmentIdIdempotencia}} de proposito, para nao interferir no ciclo de vida da consulta {{appointmentId}}.\n\nA deduplicacao vem da constraint UNIQUE(event_id) — nao de um upsert, porque o log e append-only e nunca atualiza uma linha."
+          }
+        },
+        {
+          "name": "5. Sem appointmentDate — deve ir para a DLQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"CANCELLED\\\", \\\"occurredAt\\\": \\\"2026-09-01T10:00:00Z\\\", \\\"appointmentId\\\": 77, \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"description\\\": \\\"Consulta de rotina\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "appointmentDate e obrigatorio ATE em cancelamento: uma consulta cancelada tinha uma data, e e ela que da sentido ao registro.\n\nEsperado: nada persistido, +1 em history.queue.dlq. Confira na requisicao 7."
+          }
+        },
+        {
+          "name": "6. Campo fora do contrato — deve ir para a DLQ",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('mensagem roteada para a fila', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().routed, 'routed').to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\",\n    \"delivery_mode\": 2\n  },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"SCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-09-01T11:00:00Z\\\", \\\"appointmentId\\\": 99, \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-09-05T09:00:00\\\", \\\"description\\\": \\\"Consulta de rotina\\\", \\\"campoInesperado\\\": true}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "exchanges",
+                "%2F",
+                "{{exchange}}",
+                "publish"
+              ]
+            },
+            "description": "campoInesperado nao existe no contrato. A desserializacao falha antes do listener e a mensagem vai para a DLQ, em vez de ser truncada silenciosamente.\n\nEsperado: nada persistido, +1 em history.queue.dlq."
+          }
+        },
+        {
+          "name": "7. Conferir a DLQ (le sem consumir)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('as mensagens invalidas foram para a DLQ', function () {",
+                  "    const msgs = pm.response.json();",
+                  "    pm.expect(msgs.length, 'as requisicoes 5 e 6 deveriam ter caido aqui').to.be.at.least(2);",
+                  "});",
+                  "pm.test('os payloads rejeitados sao os esperados', function () {",
+                  "    const corpos = pm.response.json().map(m => m.payload);",
+                  "    pm.expect(corpos.some(p => !p.includes('appointmentDate')),",
+                  "        'faltou a mensagem sem appointmentDate').to.be.true;",
+                  "    pm.expect(corpos.some(p => p.includes('campoInesperado')),",
+                  "        'faltou a mensagem com campo fora do contrato').to.be.true;",
+                  "});",
+                  "// Mostra o conteudo no console do Runner.",
+                  "pm.response.json().forEach(m => console.log('DLQ:', m.payload));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 10,\n  \"ackmode\": \"ack_requeue_true\",\n  \"encoding\": \"auto\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{rabbitUrl}}/api/queues/%2F/{{queue}}.dlq/get",
+              "host": [
+                "{{rabbitUrl}}"
+              ],
+              "path": [
+                "api",
+                "queues",
+                "%2F",
+                "{{queue}}.dlq",
+                "get"
+              ]
+            },
+            "description": "Le as mensagens da DLQ **sem consumi-las** (`ackmode: ack_requeue_true` devolve tudo para a fila depois de ler).\n\nDepois das requisicoes 5 e 6, devem aparecer duas: uma sem `appointmentDate` e uma com `campoInesperado`. O corpo de cada uma sai no console do Runner.\n\n> Por que ler a fila em vez de olhar a contagem em `/api/queues`? Aquela contagem vem de estatisticas em cache e demora alguns segundos para refletir. Esta leitura e imediata e ainda mostra o payload rejeitado."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Consultar por GraphQL",
+      "description": "As duas queries do servico, mais os casos de borda.\n\nPublique os eventos da pasta 1 antes, senao as respostas vem vazias.",
+      "item": [
+        {
+          "name": "1. patientHistory — estado atual de cada consulta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('sem erros GraphQL', function () {",
+                  "    pm.expect(pm.response.json().errors, 'errors').to.be.undefined;",
+                  "});",
+                  "pm.test('uma entrada por consulta, com o estado mais recente', function () {",
+                  "    const rows = pm.response.json().data.patientHistory;",
+                  "    const alvo = pm.variables.get('appointmentId');",
+                  "    const c = rows.filter(r => r.appointmentId === alvo);",
+                  "    pm.expect(c.length, `esperava 1 linha para a consulta ${alvo} — publique os eventos 1-3 primeiro`).to.eql(1);",
+                  "    pm.expect(c[0].eventStatus).to.eql('COMPLETED');",
+                  "    pm.expect(c[0].appointmentDate, 'deveria mostrar a data remarcada').to.eql('2026-09-12T14:00:00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: 10) {\n    appointmentId\n    eventStatus\n    appointmentDate\n    doctorName\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Colapsa a trilha: UMA entrada por consulta, com o evento mais recente.\n\nDepois dos eventos 1-3, a consulta {{appointmentId}} aparece como COMPLETED com a data remarcada (12/09) — a data original nao aparece aqui, so no appointmentTimeline."
+          }
+        },
+        {
+          "name": "2. appointmentTimeline — trilha completa",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a trilha esta em ordem cronologica', function () {",
+                  "    const t = pm.response.json().data.appointmentTimeline;",
+                  "    pm.expect(t.length, 'publique os eventos 1-3 primeiro').to.eql(3);",
+                  "    pm.expect(t.map(e => e.eventStatus))",
+                  "        .to.eql(['SCHEDULED', 'RESCHEDULED', 'COMPLETED']);",
+                  "});",
+                  "pm.test('a data original sobrevive a remarcacao', function () {",
+                  "    const t = pm.response.json().data.appointmentTimeline;",
+                  "    pm.expect(t[0].appointmentDate, 'data original perdida').to.eql('2026-09-05T09:00:00');",
+                  "    pm.expect(t[1].appointmentDate).to.eql('2026-09-12T14:00:00');",
+                  "    pm.expect(t[2].appointmentDate).to.eql('2026-09-12T14:00:00');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  appointmentTimeline(appointmentId: 42) {\n    eventStatus\n    appointmentDate\n    occurredAt\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "A historia inteira da consulta, em ordem cronologica.\n\nE aqui que o append-only aparece: a data ORIGINAL (05/09) continua na primeira linha, mesmo depois da remarcacao para 12/09. Uma tabela de estado teria perdido essa informacao."
+          }
+        },
+        {
+          "name": "3. patientHistory — todos os campos disponiveis",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('devolve os 10 campos', function () {",
+                  "    const rows = pm.response.json().data.patientHistory;",
+                  "    pm.expect(rows, 'publique os eventos primeiro').to.not.be.empty;",
+                  "    pm.expect(Object.keys(rows[0])).to.have.members(['id','appointmentId','patientId',",
+                  "        'patientName','doctorId','doctorName','description','appointmentDate',",
+                  "        'eventStatus','occurredAt']);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: 10) {\n    id\n    appointmentId\n    patientId\n    patientName\n    doctorId\n    doctorName\n    description\n    appointmentDate\n    eventStatus\n    occurredAt\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Os 10 campos de MedicalRecord.\n\nCompare com a query 1: peca menos campos e a resposta encolhe. E a propriedade que justifica GraphQL aqui — o cliente escolhe o que trafega, sem endpoint novo."
+          }
+        },
+        {
+          "name": "4. Paciente sem historico — lista vazia, nao erro",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('lista vazia, sem erro', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.errors, 'nao deveria haver erro').to.be.undefined;",
+                  "    pm.expect(body.data.patientHistory).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: 999) {\n    appointmentId\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Decisao de design registrada: o history-service NAO conhece o cadastro de pacientes, entao nao consegue distinguir 'paciente inexistente' de 'paciente sem consultas'. Devolver NOT_FOUND seria afirmar algo que ele nao sabe."
+          }
+        },
+        {
+          "name": "5. Id nao numerico — BAD_REQUEST",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('classificado como BAD_REQUEST', function () {",
+                  "    const errs = pm.response.json().errors;",
+                  "    pm.expect(errs, 'deveria haver erro').to.not.be.undefined;",
+                  "    pm.expect(errs[0].extensions.classification).to.eql('BAD_REQUEST');",
+                  "});",
+                  "pm.test('a mensagem nao vaza internals', function () {",
+                  "    const msg = pm.response.json().errors[0].message;",
+                  "    pm.expect(msg).to.not.match(/Exception|\\bat [a-z]+\\./);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: \"abc\") {\n    appointmentId\n  }\n}",
+                "variables": ""
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/graphql",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "O tipo ID! do GraphQL aceita qualquer string, entao o erro so aparece na conversao para Long. Sem tratamento isso viraria INTERNAL_ERROR opaco com stack trace no log — um caller nao autenticado poderia inundar o log de ERROR com uma query malformada."
+          }
+        }
+      ]
+    }
+  ]
+}
