@@ -1,0 +1,34 @@
+type Query {
+    "Ultimo evento de cada consulta do paciente, da mais recente para a mais antiga."
+    patientHistory(patientId: ID!): [MedicalRecord!]!
+    "Trilha completa de uma consulta, do evento mais antigo ao mais recente."
+    appointmentTimeline(appointmentId: ID!): [MedicalRecord!]!
+}
+
+"""
+Uma linha do historico append-only: o estado da consulta no momento de um evento.
+Datas sao strings ISO-8601.
+"""
+type MedicalRecord {
+    "Identificador da linha no historico, nao da consulta."
+    id: ID!
+    appointmentId: ID!
+    patientId: ID!
+    patientName: String
+    doctorId: ID!
+    doctorName: String
+    description: String
+    "Inicio da consulta neste evento, ISO-8601 sem timezone. Ex: 2026-09-05T09:00:00"
+    appointmentDate: String!
+    eventStatus: AppointmentEventStatus!
+    "Quando o evento ocorreu no appointment-service, ISO-8601 UTC. Ex: 2026-08-30T14:32:10Z"
+    occurredAt: String!
+}
+
+"Transicao sofrida pela consulta, declarada pelo appointment-service."
+enum AppointmentEventStatus {
+    SCHEDULED
+    RESCHEDULED
+    CANCELLED
+    COMPLETED
+}
