@@ -11,7 +11,6 @@ import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 /**
  * Grava cada AppointmentEvent recebido como uma linha nova em medical_history.
@@ -29,7 +28,15 @@ public class HistoryIngestionService {
         this.validator = validator;
     }
 
-    @Transactional
+    /**
+     * Sem @Transactional de proposito. Com uma transacao no metodo, a violacao do UNIQUE(event_id)
+     * marca a transacao como rollback-only e o catch abaixo nao a limpa: o interceptor do Spring
+     * lanca UnexpectedRollbackException no commit, ja fora do catch, e o listener manda para a DLQ
+     * um evento que ja esta gravado. Sem ela, o save roda na transacao do proprio repositorio e a
+     * DataIntegrityViolationException chega ao catch com o rollback ja resolvido.
+     *
+     * Nao ha o que atomizar aqui: a ingestao grava uma unica linha.
+     */
     public void ingest(AppointmentEventDTO evento) {
         if (evento == null) {
             throw new IllegalArgumentException("AppointmentEvent nao pode ser nulo");
@@ -50,7 +57,7 @@ public class HistoryIngestionService {
             log.debug("Historico gravado para appointment {} a partir do evento {}",
                     evento.appointmentId(), evento.eventId());
         } catch (DataIntegrityViolationException e) {
-            // Corrida entre consumers processando a mesma reentrega: o UNIQUE(event_id) barrou.
+            // Corrida entre consumers processando a mesma reentrega: o UNIQUE(event_id) barrou .
             log.warn("Evento {} inserido concorrentemente, ignorando", evento.eventId());
         }
     }
