@@ -218,6 +218,34 @@ Para inspecionar o que caiu na DLQ: **Queues** → `history.queue.dlq` → **Get
 | `occurred_at` | quando o evento ocorreu no produtor; ordena a trilha |
 | `recorded_at` | quando o `history-service` gravou |
 
+## 5b. Consultar o histórico por GraphQL
+
+Com a aplicação no ar, o schema pode ser explorado em http://localhost:8080/graphiql.
+
+Estado atual de cada consulta do paciente:
+
+```bash
+curl -s -X POST http://localhost:8080/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate doctorName } }"}' \
+  | python3 -m json.tool
+```
+
+Trilha completa de uma consulta:
+
+```bash
+curl -s -X POST http://localhost:8080/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ appointmentTimeline(appointmentId: 42) { eventStatus appointmentDate occurredAt } }"}' \
+  | python3 -m json.tool
+```
+
+As duas queries, os campos disponíveis e os formatos de resposta estão em
+[`docs/graphql/queries.md`](docs/graphql/queries.md).
+
+> O endpoint `/graphql` está **aberto** nesta fase. A autorização por role entra quando a Pessoa 1
+> publicar o formato do JWT.
+
 ## 6. Rodar os testes
 
 Os testes sobem Postgres e RabbitMQ descartáveis via Testcontainers, então basta ter o **Docker em
