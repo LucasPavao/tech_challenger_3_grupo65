@@ -39,6 +39,19 @@ class GraphQlExceptionResolverTest {
     }
 
     @Test
+    void traduzIdNaoNumericoParaBadRequest() {
+        // ID! aceita qualquer string: "abc" passa no schema e falha no bind para Long.
+        graphQlTester.document("{ patientHistory(patientId: \"abc\") { appointmentId } }")
+                .execute()
+                .errors()
+                .satisfy(erros -> {
+                    assertThat(erros).hasSize(1);
+                    assertThat(erros.getFirst().getErrorType()).isEqualTo(ErrorType.BAD_REQUEST);
+                    assertThat(erros.getFirst().getMessage()).contains("patientHistory");
+                });
+    }
+
+    @Test
     void naoVazaDetalheDeErroInesperado() {
         when(queryService.patientHistory(any()))
                 .thenThrow(new IllegalStateException("connection pool exhausted at 10.0.0.5:5432"));
