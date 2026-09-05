@@ -105,4 +105,42 @@ class MedicalHistoryQueryServiceTest {
 
         verify(repository, never()).findLatestEventPerAppointment(any());
     }
+
+    @Test
+    void appointmentTimelineDevolveATrilhaEmOrdemCronologica() {
+        MedicalHistory agendada = MedicalHistory.builder()
+                .eventId(UUID.randomUUID()).appointmentId(42L).patientId(10L).doctorId(7L)
+                .appointmentDate(LocalDateTime.of(2026, 9, 5, 9, 0))
+                .eventStatus(AppointmentEventStatus.SCHEDULED)
+                .occurredAt(Instant.parse("2026-08-30T14:00:00Z")).build();
+        MedicalHistory remarcada = MedicalHistory.builder()
+                .eventId(UUID.randomUUID()).appointmentId(42L).patientId(10L).doctorId(7L)
+                .appointmentDate(LocalDateTime.of(2026, 9, 12, 14, 0))
+                .eventStatus(AppointmentEventStatus.RESCHEDULED)
+                .occurredAt(Instant.parse("2026-08-31T10:00:00Z")).build();
+        when(repository.findByAppointmentIdOrderByOccurredAtAsc(42L))
+                .thenReturn(List.of(agendada, remarcada));
+
+        List<MedicalRecordResponse> trilha = service.appointmentTimeline(42L);
+
+        assertThat(trilha).extracting(MedicalRecordResponse::eventStatus)
+                .containsExactly(AppointmentEventStatus.SCHEDULED, AppointmentEventStatus.RESCHEDULED);
+        assertThat(trilha).extracting(MedicalRecordResponse::appointmentDate)
+                .containsExactly("2026-09-05T09:00:00", "2026-09-12T14:00:00");
+    }
+
+    @Test
+    void appointmentTimelineDevolveListaVaziaParaConsultaDesconhecida() {
+        when(repository.findByAppointmentIdOrderByOccurredAtAsc(404L)).thenReturn(List.of());
+
+        assertThat(service.appointmentTimeline(404L)).isEmpty();
+    }
+
+    @Test
+    void appointmentTimelineRejeitaAppointmentIdNulo() {
+        assertThatThrownBy(() -> service.appointmentTimeline(null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verify(repository, never()).findByAppointmentIdOrderByOccurredAtAsc(any());
+    }
 }

@@ -27,4 +27,9 @@ public class HistoryQueryController {
     public List<MedicalRecordResponse> patientHistory(@Argument Long patientId) {
         return queryService.patientHistory(patientId);
     }
+
+    @QueryMapping
+    public List<MedicalRecordResponse> appointmentTimeline(@Argument Long appointmentId) {
+        return queryService.appointmentTimeline(appointmentId);
+    }
 }

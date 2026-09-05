@@ -1,6 +1,8 @@
 type Query {
     "Ultimo evento de cada consulta do paciente, da mais recente para a mais antiga."
     patientHistory(patientId: ID!): [MedicalRecord!]!
+    "Trilha completa de uma consulta, do evento mais antigo ao mais recente."
+    appointmentTimeline(appointmentId: ID!): [MedicalRecord!]!
 }
 
 """

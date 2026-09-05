@@ -87,4 +87,35 @@ class HistoryQueryControllerTest {
                 .path("patientHistory[0]").entity(java.util.Map.class)
                 .satisfies(registro -> assertThat(registro).containsOnlyKeys("appointmentId"));
     }
+
+    @Test
+    void appointmentTimelineDevolveATrilhaDaConsulta() {
+        when(queryService.appointmentTimeline(42L)).thenReturn(List.of(
+                resposta("42", AppointmentEventStatus.SCHEDULED),
+                resposta("42", AppointmentEventStatus.RESCHEDULED),
+                resposta("42", AppointmentEventStatus.COMPLETED)));
+
+        graphQlTester.document("""
+                        query {
+                          appointmentTimeline(appointmentId: 42) {
+                            eventStatus
+                            appointmentDate
+                          }
+                        }
+                        """)
+                .execute()
+                .path("appointmentTimeline").entityList(Object.class).hasSize(3)
+                .path("appointmentTimeline[0].eventStatus").entity(String.class).isEqualTo("SCHEDULED")
+                .path("appointmentTimeline[2].eventStatus").entity(String.class).isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void appointmentTimelineDevolveListaVaziaSemErro() {
+        when(queryService.appointmentTimeline(404L)).thenReturn(List.of());
+
+        graphQlTester.document("{ appointmentTimeline(appointmentId: 404) { eventStatus } }")
+                .execute()
+                .errors().verify()
+                .path("appointmentTimeline").entityList(Object.class).hasSize(0);
+    }
 }

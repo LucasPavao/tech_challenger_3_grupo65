@@ -37,4 +37,19 @@ public class MedicalHistoryQueryService {
                 .map(MedicalRecordResponse::from)
                 .toList();
     }
+
+    /**
+     * Trilha completa de uma consulta, do evento mais antigo ao mais recente. E o que o log
+     * append-only oferece e uma tabela de estado nao: a data anterior de uma consulta remarcada
+     * continua visivel na linha anterior.
+     */
+    public List<MedicalRecordResponse> appointmentTimeline(Long appointmentId) {
+        if (appointmentId == null) {
+            throw new IllegalArgumentException("appointmentId nao pode ser nulo");
+        }
+
+        return repository.findByAppointmentIdOrderByOccurredAtAsc(appointmentId).stream()
+                .map(MedicalRecordResponse::from)
+                .toList();
+    }
 }
