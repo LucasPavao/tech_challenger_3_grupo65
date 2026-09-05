@@ -6,6 +6,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.GraphQlTest;
 import org.springframework.graphql.execution.GraphQlSource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+import br.com.tech.challenge.historyservice.services.MedicalHistoryQueryService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -22,6 +25,14 @@ class GraphQlSchemaTest {
      */
     @Autowired
     private GraphQlSource graphQlSource;
+
+    /**
+     * O HistoryQueryController e carregado pelo @GraphQlTest, mas @Service nao entra nessa slice.
+     * O mock existe so para o controller poder ser construido -- este teste valida o schema,
+     * nao o comportamento das queries.
+     */
+    @MockitoBean
+    private MedicalHistoryQueryService queryService;
 
     private GraphQLSchema schema() {
         return graphQlSource.schema();
