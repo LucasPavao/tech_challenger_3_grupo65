@@ -48,7 +48,7 @@ public class MedicalHistoryQueryService {
             throw new IllegalArgumentException("appointmentId nao pode ser nulo");
         }
 
-        return repository.findByAppointmentIdOrderByOccurredAtAsc(appointmentId).stream()
+        return repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(appointmentId).stream()
                 .map(MedicalRecordResponse::from)
                 .toList();
     }

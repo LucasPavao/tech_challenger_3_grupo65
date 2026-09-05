@@ -118,7 +118,7 @@ class MedicalHistoryQueryServiceTest {
                 .appointmentDate(LocalDateTime.of(2026, 9, 12, 14, 0))
                 .eventStatus(AppointmentEventStatus.RESCHEDULED)
                 .occurredAt(Instant.parse("2026-08-31T10:00:00Z")).build();
-        when(repository.findByAppointmentIdOrderByOccurredAtAsc(42L))
+        when(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L))
                 .thenReturn(List.of(agendada, remarcada));
 
         List<MedicalRecordResponse> trilha = service.appointmentTimeline(42L);
@@ -131,7 +131,7 @@ class MedicalHistoryQueryServiceTest {
 
     @Test
     void appointmentTimelineDevolveListaVaziaParaConsultaDesconhecida() {
-        when(repository.findByAppointmentIdOrderByOccurredAtAsc(404L)).thenReturn(List.of());
+        when(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(404L)).thenReturn(List.of());
 
         assertThat(service.appointmentTimeline(404L)).isEmpty();
     }
@@ -141,6 +141,6 @@ class MedicalHistoryQueryServiceTest {
         assertThatThrownBy(() -> service.appointmentTimeline(null))
                 .isInstanceOf(IllegalArgumentException.class);
 
-        verify(repository, never()).findByAppointmentIdOrderByOccurredAtAsc(any());
+        verify(repository, never()).findByAppointmentIdOrderByOccurredAtAscIdAsc(any());
     }
 }

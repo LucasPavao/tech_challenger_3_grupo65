@@ -92,7 +92,7 @@ class HistoryGraphQlIT {
         publica(AppointmentEventStatus.COMPLETED, NOVA_DATA, Instant.parse("2026-09-12T15:00:00Z"));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(42L)).hasSize(3));
+                assertThat(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L)).hasSize(3));
 
         graphQlTester.document("{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate } }")
                 .execute()
@@ -108,7 +108,7 @@ class HistoryGraphQlIT {
         publica(AppointmentEventStatus.COMPLETED, NOVA_DATA, Instant.parse("2026-09-12T15:00:00Z"));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
-                assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(42L)).hasSize(3));
+                assertThat(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L)).hasSize(3));
 
         graphQlTester.document("{ appointmentTimeline(appointmentId: 42) { eventStatus appointmentDate } }")
                 .execute()

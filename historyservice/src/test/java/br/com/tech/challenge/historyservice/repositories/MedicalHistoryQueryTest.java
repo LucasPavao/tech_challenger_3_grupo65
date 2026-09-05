@@ -75,6 +75,21 @@ class MedicalHistoryQueryTest {
     }
 
     @Test
+    void desempataOccurredAtIgualPeloIdMaisRecente() {
+        LocalDateTime data = LocalDateTime.of(2026, 9, 5, 9, 0);
+        Instant mesmoInstante = Instant.parse("2026-08-30T14:00:00Z");
+
+        // occurred_at vem do relogio do produtor: dois eventos podem empatar. O ultimo ingerido
+        // (id maior) e o estado atual.
+        grava(10L, 42L, AppointmentEventStatus.SCHEDULED, data, mesmoInstante);
+        grava(10L, 42L, AppointmentEventStatus.CANCELLED, data, mesmoInstante);
+
+        assertThat(repository.findLatestEventPerAppointment(10L))
+                .extracting(MedicalHistory::getEventStatus)
+                .containsExactly(AppointmentEventStatus.CANCELLED);
+    }
+
+    @Test
     void naoMisturaPacientes() {
         LocalDateTime data = LocalDateTime.of(2026, 9, 5, 9, 0);
         grava(10L, 42L, AppointmentEventStatus.SCHEDULED, data, Instant.parse("2026-08-30T14:00:00Z"));

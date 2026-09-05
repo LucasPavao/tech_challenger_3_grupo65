@@ -122,7 +122,7 @@ class MedicalHistoryRepositoryTest {
         repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.RESCHEDULED,
                 novaData, Instant.parse("2026-08-30T15:00:00Z")));
 
-        List<MedicalHistory> trilha = repository.findByAppointmentIdOrderByOccurredAtAsc(42L);
+        List<MedicalHistory> trilha = repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L);
 
         assertThat(trilha).hasSize(2);
         assertThat(trilha).extracting(MedicalHistory::getEventStatus)
@@ -141,7 +141,26 @@ class MedicalHistoryRepositoryTest {
         repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.COMPLETED,
                 DATA_CONSULTA.plusDays(7), t.plusSeconds(7200)));
 
-        assertThat(repository.findByAppointmentIdOrderByOccurredAtAsc(42L))
+        assertThat(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L))
+                .extracting(MedicalHistory::getEventStatus)
+                .containsExactly(AppointmentEventStatus.SCHEDULED,
+                        AppointmentEventStatus.RESCHEDULED,
+                        AppointmentEventStatus.COMPLETED);
+    }
+
+    @Test
+    void trilhaMantemAOrdemDeIngestaoQuandoOccurredAtEmpata() {
+        Instant mesmoInstante = Instant.parse("2026-08-30T14:00:00Z");
+
+        // Mesmo occurred_at, event_id distintos: sem desempate por id a ordem seria arbitraria.
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.SCHEDULED,
+                DATA_CONSULTA, mesmoInstante));
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.RESCHEDULED,
+                DATA_CONSULTA, mesmoInstante));
+        repository.saveAndFlush(registro(UUID.randomUUID(), 42L, AppointmentEventStatus.COMPLETED,
+                DATA_CONSULTA, mesmoInstante));
+
+        assertThat(repository.findByAppointmentIdOrderByOccurredAtAscIdAsc(42L))
                 .extracting(MedicalHistory::getEventStatus)
                 .containsExactly(AppointmentEventStatus.SCHEDULED,
                         AppointmentEventStatus.RESCHEDULED,
