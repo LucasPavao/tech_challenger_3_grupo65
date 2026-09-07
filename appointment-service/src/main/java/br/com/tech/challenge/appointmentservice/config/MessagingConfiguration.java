@@ -1,0 +1,9 @@
+package br.com.tech.challenge.appointmentservice.config;
+
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableConfigurationProperties(MessagingProperties.class)
+public class MessagingConfiguration {
+}

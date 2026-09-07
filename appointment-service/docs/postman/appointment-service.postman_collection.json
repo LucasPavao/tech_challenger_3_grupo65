@@ -1,0 +1,88 @@
+{
+  "info": {
+    "name": "Appointment Service - Tech Challenge Fase 3",
+    "description": "Collection da responsabilidade de Lucas Silva - Appointment Service.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:8081"},
+    {"key": "appointmentId", "value": "1"},
+    {"key": "patientId", "value": "10"}
+  ],
+  "item": [
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Create appointment",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"patientId\": 10,\n  \"doctorId\": 7,\n  \"appointmentDate\": \"2026-10-10T09:00:00\",\n  \"description\": \"Consulta de rotina - cardiologia\"\n}"},
+            "url": {"raw": "{{baseUrl}}/appointments", "host": ["{{baseUrl}}"], "path": ["appointments"]}
+          }
+        },
+        {
+          "name": "Find appointment",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/appointments/{{appointmentId}}", "host": ["{{baseUrl}}"], "path": ["appointments", "{{appointmentId}}"]}
+          }
+        },
+        {
+          "name": "List appointments",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/appointments", "host": ["{{baseUrl}}"], "path": ["appointments"]}
+          }
+        },
+        {
+          "name": "List appointments by patient",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/appointments/patient/{{patientId}}", "host": ["{{baseUrl}}"], "path": ["appointments", "patient", "{{patientId}}"]}
+          }
+        },
+        {
+          "name": "Update appointment",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"patientId\": 10,\n  \"doctorId\": 7,\n  \"appointmentDate\": \"2026-10-15T14:00:00\",\n  \"description\": \"Consulta remarcada\"\n}"},
+            "url": {"raw": "{{baseUrl}}/appointments/{{appointmentId}}", "host": ["{{baseUrl}}"], "path": ["appointments", "{{appointmentId}}"]}
+          }
+        },
+        {
+          "name": "Complete appointment",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"status\": \"COMPLETED\"\n}"},
+            "url": {"raw": "{{baseUrl}}/appointments/{{appointmentId}}/status", "host": ["{{baseUrl}}"], "path": ["appointments", "{{appointmentId}}", "status"]}
+          }
+        },
+        {
+          "name": "Cancel appointment",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"status\": \"CANCELLED\"\n}"},
+            "url": {"raw": "{{baseUrl}}/appointments/{{appointmentId}}/status", "host": ["{{baseUrl}}"], "path": ["appointments", "{{appointmentId}}", "status"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}", "actuator", "health"], "path": []}
+          }
+        }
+      ]
+    }
+  ]
+}
