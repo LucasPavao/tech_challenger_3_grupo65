@@ -15,15 +15,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
-/**
- * Testes mínimos exigidos pelo plano de divisão para a Pessoa 5:
- * recebimento do evento, criação e processamento da notificação.
- */
 @ExtendWith(MockitoExtension.class)
 class NotificationServiceTest {
 
@@ -50,23 +47,26 @@ class NotificationServiceTest {
         event.setDescription("Consulta de rotina");
         event.setEventType(EventType.CREATED);
 
-        // save() é chamado duas vezes: 1) ao persistir como PENDING, 2) ao persistir como SENT
         when(notificationRepository.save(any(Notification.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
+        AtomicReference<NotificationStatus> statusNoMomentoDoEnvio = new AtomicReference<>();
+        doAnswer(invocation -> {
+            Notification n = invocation.getArgument(0);
+            statusNoMomentoDoEnvio.set(n.getStatus());
+            return null;
+        }).when(notificationSender).send(any(Notification.class));
+
         Notification result = notificationService.processAppointmentEvent(event);
 
-        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
-        verify(notificationRepository, times(2)).save(captor.capture());
+        verify(notificationRepository, times(2)).save(any(Notification.class));
         verify(notificationSender, times(1)).send(any(Notification.class));
 
-        Notification firstSave = captor.getAllValues().get(0);
-        assertThat(firstSave.getStatus()).isEqualTo(NotificationStatus.PENDING);
-        assertThat(firstSave.getAppointmentId()).isEqualTo(1L);
-        assertThat(firstSave.getPatientId()).isEqualTo(10L);
-        assertThat(firstSave.getMessage()).contains("agendada");
-
+        assertThat(statusNoMomentoDoEnvio.get()).isEqualTo(NotificationStatus.PENDING);
         assertThat(result.getStatus()).isEqualTo(NotificationStatus.SENT);
+        assertThat(result.getAppointmentId()).isEqualTo(1L);
+        assertThat(result.getPatientId()).isEqualTo(10L);
+        assertThat(result.getMessage()).contains("agendada");
     }
 
     @Test
