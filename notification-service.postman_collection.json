@@ -1,0 +1,98 @@
+{
+  "info": {
+    "name": "notification-service - Tech Challenge Fase 3 - Grupo 65",
+    "description": "Collection para testar o notification-service: consulta de notificações via REST e publicação de eventos de teste no RabbitMQ (via API HTTP do management plugin).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8081", "type": "string" },
+    { "key": "rabbitmq_management_url", "value": "http://localhost:15673", "type": "string" },
+    { "key": "rabbitmq_user", "value": "guest", "type": "string" },
+    { "key": "rabbitmq_password", "value": "guest", "type": "string" },
+    { "key": "rabbitmq_exchange", "value": "appointment.exchange", "type": "string" },
+    { "key": "rabbitmq_routing_key", "value": "notification.created", "type": "string" },
+    { "key": "patient_id", "value": "10", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "REST API",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/actuator/health",
+              "host": ["{{base_url}}"],
+              "path": ["actuator", "health"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Listar notificações do paciente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/notifications/patient/{{patient_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "patient", "{{patient_id}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Simular eventos (RabbitMQ)",
+      "description": "Estas requisições usam a API HTTP do painel do RabbitMQ (porta de management) para publicar mensagens diretamente na exchange, simulando o que o appointment-service fará quando estiver pronto. Não é preciso abrir o navegador para isso.",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{rabbitmq_user}}" },
+          { "key": "password", "value": "{{rabbitmq_password}}" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Publicar evento CREATED",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{rabbitmq_management_url}}/api/exchanges/%2F/{{rabbitmq_exchange}}/publish",
+              "host": ["{{rabbitmq_management_url}}"],
+              "path": ["api", "exchanges", "%2F", "{{rabbitmq_exchange}}", "publish"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\"\n  },\n  \"routing_key\": \"{{rabbitmq_routing_key}}\",\n  \"payload\": \"{\\\"appointmentId\\\":1,\\\"patientId\\\":{{patient_id}},\\\"doctorId\\\":5,\\\"dateTime\\\":\\\"2026-09-10T14:30:00\\\",\\\"description\\\":\\\"Consulta de rotina\\\",\\\"eventType\\\":\\\"CREATED\\\"}\",\n  \"payload_encoding\": \"string\"\n}"
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Publicar evento UPDATED",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{rabbitmq_management_url}}/api/exchanges/%2F/{{rabbitmq_exchange}}/publish",
+              "host": ["{{rabbitmq_management_url}}"],
+              "path": ["api", "exchanges", "%2F", "{{rabbitmq_exchange}}", "publish"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": {\n    \"content_type\": \"application/json\"\n  },\n  \"routing_key\": \"{{rabbitmq_routing_key}}\",\n  \"payload\": \"{\\\"appointmentId\\\":1,\\\"patientId\\\":{{patient_id}},\\\"doctorId\\\":5,\\\"dateTime\\\":\\\"2026-09-15T09:00:00\\\",\\\"description\\\":\\\"Consulta remarcada\\\",\\\"eventType\\\":\\\"UPDATED\\\"}\",\n  \"payload_encoding\": \"string\"\n}"
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
