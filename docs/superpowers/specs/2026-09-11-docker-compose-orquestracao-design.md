@@ -112,7 +112,7 @@ convencional.
 |---|---|
 | `infra/.env` | credenciais e portas do RabbitMQ — o contrato compartilhado |
 | `<serviço>/.env` | seu Postgres (porta, nome, credenciais), porta da app, exchanges e routing keys |
-| `.env` da raiz | nada funcional; apenas overrides globais |
+| `.env` da raiz | `COMPOSE_PROFILES=apps` (obrigatório) e overrides globais |
 
 Hostnames diferem entre rodar na IDE e rodar em container. O `.env` permanece escrito
 na ótica do desenvolvedor local (`localhost` + porta publicada); o bloco `environment`
@@ -174,10 +174,16 @@ documentado, não contornado.
 
 ### Modo IDE
 
-As aplicações ficam no profile `apps`, com `COMPOSE_PROFILES=apps` nos `.env`.
-Assim `docker compose up` sobe tudo, e `COMPOSE_PROFILES= docker compose up -d` sobe
-apenas Postgres e RabbitMQ para debugar a aplicação pela IDE. Escalável: um serviço
-novo entra no profile sem precisar ser listado em lugar nenhum.
+As aplicações ficam no profile `apps`, com `COMPOSE_PROFILES=apps` no `.env` da raiz
+**e** no `.env` de cada serviço. Assim `docker compose up` sobe tudo, e
+`COMPOSE_PROFILES= docker compose up -d` sobe apenas Postgres e RabbitMQ para debugar a
+aplicação pela IDE. Escalável: um serviço novo entra no profile sem precisar ser listado
+em lugar nenhum.
+
+`COMPOSE_PROFILES` é lido do `.env` do diretório de invocação, **não** do `env_file` dos
+includes — validado no Compose v2.40.2. Por isso a raiz precisa do seu próprio `.env`,
+ainda que só com essa chave; sem ele, `docker compose up` na raiz sobe apenas os bancos e
+o broker.
 
 ### Makefile
 
