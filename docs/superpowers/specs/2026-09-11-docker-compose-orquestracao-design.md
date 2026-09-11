@@ -203,13 +203,106 @@ banco mudam, cada pessoa precisa regerar o seu a partir do `.env.example` — ca
 contrário o appointment-service continuará apontando para a 5432 e colidirá. O
 `make setup` cria apenas os que ainda não existem, sem sobrescrever.
 
+## Adicionando um novo serviço
+
+Exemplo com um `notification-service`. São quatro arquivos novos e **uma** edição fora
+da pasta do serviço.
+
+### 1. `notification-service/docker-compose.yml`
+
+```yaml
+name: grupo65                       # convenção: mesmo projeto para todos
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
+services:
+  notification-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: ["${DB_PORT}:5432"]
+    volumes: [notification-postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      retries: 10
+
+  notification-app:
+    build: .
+    profiles: [apps]
+    environment:
+      DB_HOST: notification-postgres     # sobrescreve o localhost do .env
+      DB_PORT: 5432                      # porta interna, não a publicada
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    ports: ["${SERVER_PORT}:${SERVER_PORT}"]
+    networks: [default, shared]          # `shared` dá acesso ao broker
+    depends_on:
+      notification-postgres: { condition: service_healthy }
+      rabbitmq:              { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
+      start_period: 40s
+
+volumes:
+  notification-postgres-data:
+```
+
+### 2. `notification-service/.env.example`
+
+Usa a próxima faixa de portas livre (8080/5432 e 8081/5433 já estão tomadas):
+
+```
+COMPOSE_PROFILES=apps
+POSTGRES_DB=notification_db
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5434
+SERVER_PORT=8082
+```
+
+### 3. `Dockerfile` e `.dockerignore`
+
+Copiados de qualquer serviço existente, sem alteração — o `mvnw` e o `pom.xml` vêm do
+contexto de build.
+
+### 4. Uma entrada no `docker-compose.yml` da raiz
+
+```yaml
+  - path: ./notification-service/docker-compose.yml
+    env_file: ./notification-service/.env
+```
+
+Depois, `make setup && make up`.
+
+### O que não se toca
+
+`infra/`, o compose dos outros serviços, o `Makefile`, nenhum `.env` alheio. O único
+acoplamento central é a entrada no `include` — não há como eliminá-la, pois o Compose
+não aceita glob em `include`.
+
+### Armadilhas
+
+- **`name: grupo65` no topo é obrigatório.** Sem ele o serviço vira um projeto Compose
+  próprio e sobe um RabbitMQ paralelo em vez de reusar o compartilhado.
+- **`networks: [default, shared]` na aplicação.** Omitir `shared` e ela não enxerga o
+  broker; incluir `shared` no Postgres quebra o isolamento entre bancos.
+- **Exchanges sempre `TopicExchange`** no código Spring. Dois serviços declarando a
+  mesma exchange com tipos diferentes derrubam o channel com `PRECONDITION_FAILED` —
+  foi exatamente o conflito encontrado entre history e appointment.
+
 ## Critérios de aceite
 
 1. `docker compose config` resolve sem erro na raiz e em cada serviço, com um único
    `rabbitmq` e sem colisão de portas.
 2. `make up` deixa todos os containers em estado `healthy`.
-3. Ponta a ponta: `POST` de agendamento no appointment-service (8081) resulta em
-   registro consultável via GraphQL no history-service (8080). Exercita Postgres,
+3. Ponta a ponta: `POST` de agendamento no appointment-service (8080) resulta em
+   registro consultável via GraphQL no history-service (8081). Exercita Postgres,
    RabbitMQ, a mudança de exchange e a rede de uma vez.
 4. Independência: após `docker compose down -v` na raiz, `docker compose up` dentro de
    `history-service/` sobe exatamente três containers e nenhum do appointment-service.
