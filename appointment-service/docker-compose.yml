@@ -1,38 +1,61 @@
+name: grupo65
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
 services:
   appointment-postgres:
     image: postgres:16-alpine
-    container_name: appointmentservice-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_PORT}:5432"
     volumes:
       - appointment-postgres-data:/var/lib/postgresql/data
+    networks:
+      - appointment-net
+    restart: on-failure
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mydatabase}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  appointment-rabbitmq:
-    image: rabbitmq:4-management-alpine
-    container_name: appointmentservice-rabbitmq
+  appointment-app:
+    build: .
+    profiles: [apps]
+    env_file:
+      - .env
+      - ../infra/.env
     environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+      DB_HOST: appointment-postgres
+      DB_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
     ports:
-      - "${RABBITMQ_PORT:-5672}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
-    volumes:
-      - appointment-rabbitmq-data:/var/lib/rabbitmq
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    networks:
+      - appointment-net
+      - shared
+    restart: on-failure
+    depends_on:
+      appointment-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 5s
+      test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
+      interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
+      start_period: 40s
+
+networks:
+  appointment-net:
+    driver: bridge
 
 volumes:
   appointment-postgres-data:
-  appointment-rabbitmq-data:

@@ -2,8 +2,8 @@ package br.com.tech.challenge.appointmentservice.service;
 
 import br.com.tech.challenge.appointmentservice.event.AppointmentEvent;
 import br.com.tech.challenge.appointmentservice.event.AppointmentEventStatus;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class AppointmentEventContractTest {
 
-    private final ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+    private final JsonMapper objectMapper = JsonMapper.builder().build();
 
     @Test
     void shouldSerializeAppointmentEventWithExpectedFields() throws Exception {
