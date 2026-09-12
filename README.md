@@ -37,6 +37,12 @@ http://localhost:15672 (guest/guest).
 de dentro da pasta de um serviço derruba o projeto **inteiro**. Para parar apenas um,
 use `docker compose stop <serviço>-app <serviço>-postgres`.
 
+**Cuidado:** a exchange é declarada pelo publisher (appointment-service) mas a fila é
+declarada pelo consumer (history-service). Se você subir com `make up` e postar um
+agendamento antes de o history-service terminar de subir, a mensagem é descartada em
+silêncio pelo RabbitMQ — espere os dois serviços ficarem saudáveis (`make ps`) antes de
+testar.
+
 Num clone novo, rode `make setup` antes de qualquer coisa: os arquivos `.env` não são
 versionados, e `docker compose up`/`docker compose config` na raiz falham com um erro
 genérico de arquivo não encontrado se eles ainda não existirem, porque o `include`
@@ -88,6 +94,9 @@ services:
   notification-app:
     build: .
     profiles: [apps]
+    env_file:
+      - .env
+      - ../infra/.env
     environment:
       DB_HOST: notification-postgres     # sobrescreve o localhost do .env
       DB_PORT: 5432                      # porta interna, não a publicada
@@ -95,11 +104,15 @@ services:
       RABBITMQ_PORT: 5672
     ports: ["${SERVER_PORT}:${SERVER_PORT}"]
     networks: [notification-net, shared] # rede privada + `shared` para o broker
+    restart: on-failure
     depends_on:
       notification-postgres: { condition: service_healthy }
       rabbitmq:              { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
       start_period: 40s
 
 networks:
@@ -138,9 +151,13 @@ contexto de build.
 
 Depois, `make setup && make up`.
 
+Não esqueça de atualizar a tabela de **Portas** deste README com a faixa usada pelo
+novo serviço — é a outra edição central que esta receita não cobre sozinha.
+
 #### O que não se toca
 
-`infra/`, o compose dos outros serviços, o `Makefile`, nenhum `.env` alheio. O único
+`infra/`, o compose dos outros serviços, o `Makefile` (o `ENVS` é derivado dos
+`.env.example` existentes, então não precisa de edição), nenhum `.env` alheio. O único
 acoplamento central é a entrada no `include` — não há como eliminá-la, pois o Compose
 não aceita glob em `include`.
 
