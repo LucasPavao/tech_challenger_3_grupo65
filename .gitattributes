@@ -1,0 +1,13 @@
+# Normaliza arquivos de texto para LF no repositório.
+* text=auto
+
+# Scripts executados por shell ou make — inclusive dentro dos containers Linux — precisam de
+# LF na cópia de trabalho em qualquer sistema. Sem isso, um checkout no Windows com
+# core.autocrlf=true converte para CRLF e o build falha com "sh: ./mvnw: not found".
+mvnw text eol=lf
+*.sh text eol=lf
+Makefile text eol=lf
+
+# Scripts do Windows continuam com CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
