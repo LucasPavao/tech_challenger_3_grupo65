@@ -1,0 +1,7 @@
+name: grupo65
+
+include:
+  - path: ./history-service/docker-compose.yml
+    env_file: ./history-service/.env
+  - path: ./appointment-service/docker-compose.yml
+    env_file: ./appointment-service/.env
