@@ -1,0 +1,15 @@
+package br.com.tech.challenge.securitygateway.dto;
+
+import br.com.tech.challenge.securitygateway.entity.RoleEnum;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
+
+public record UserRequest(
+        @NotBlank @Size(max = 50) String name,
+        @NotBlank @Email @Size(max = 100) String email,
+        @NotBlank @Size(min = 8) String password,
+        @NotNull RoleEnum role
+) {
+}
