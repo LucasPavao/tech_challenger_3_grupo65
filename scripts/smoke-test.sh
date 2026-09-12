@@ -9,7 +9,7 @@ TIMEOUT_SEGUNDOS="${TIMEOUT_SEGUNDOS:-60}"
 
 # patientId aleatorio para o teste ser repetivel sem limpar o banco
 PATIENT_ID=$(( (RANDOM % 900000) + 100000 ))
-APPOINTMENT_DATE=$(date -u -d '+30 days' '+%Y-%m-%dT%H:%M:%S')
+APPOINTMENT_DATE=$(date -u -d '+30 days' '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || date -u -v+30d '+%Y-%m-%dT%H:%M:%S')
 
 echo "==> 1/3 aguardando os servicos responderem"
 for url in "$APPOINTMENT_URL/actuator/health" "$HISTORY_URL/actuator/health"; do
@@ -25,10 +25,18 @@ for url in "$APPOINTMENT_URL/actuator/health" "$HISTORY_URL/actuator/health"; do
 done
 
 echo "==> 2/3 criando agendamento (patientId=$PATIENT_ID)"
-resposta=$(curl -sf -X POST "$APPOINTMENT_URL/appointments" \
+resposta=$(curl -s -w '\n%{http_code}' -X POST "$APPOINTMENT_URL/appointments" \
   -H 'Content-Type: application/json' \
-  -d "{\"patientId\":$PATIENT_ID,\"doctorId\":7,\"appointmentDate\":\"$APPOINTMENT_DATE\",\"description\":\"Smoke test\"}")
-echo "    resposta: $resposta"
+  -d "{\"patientId\":$PATIENT_ID,\"doctorId\":7,\"appointmentDate\":\"$APPOINTMENT_DATE\",\"description\":\"Smoke test\"}") \
+  || { echo "FALHA: nao consegui falar com $APPOINTMENT_URL" >&2; exit 1; }
+http_code=$(echo "$resposta" | tail -n1)
+corpo=$(echo "$resposta" | sed '$d')
+if [ "$http_code" != "201" ]; then
+  echo "FALHA: POST /appointments retornou $http_code" >&2
+  echo "Resposta: $corpo" >&2
+  exit 1
+fi
+echo "    resposta: $corpo"
 
 echo "==> 3/3 aguardando o evento chegar no history-service via RabbitMQ"
 consulta="{\"query\":\"{ patientHistory(patientId: \\\"$PATIENT_ID\\\") { appointmentId eventStatus description } }\"}"
