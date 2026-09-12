@@ -28,9 +28,12 @@ Microsserviço responsável pelo agendamento de consultas do Tech Challenge FIAP
 ## Subir infraestrutura
 
 ```bash
-cp .env.example .env
-COMPOSE_PROFILES= docker compose up -d   # só Postgres + RabbitMQ, sem o container da app
+cp .env.example .env                      # .env deste serviço
+cp ../infra/.env.example ../infra/.env    # .env do RabbitMQ compartilhado — sem ele o compose falha
+COMPOSE_PROFILES= docker compose up -d    # só Postgres + RabbitMQ, sem o container da app
 ```
+
+Os dois `cp` sobrescrevem arquivos que já existam. Para criar só os que faltam, rode `make setup` na raiz do monorepo.
 
 Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz
 `COMPOSE_PROFILES=apps`, então o comando também sobe o container `appointment-app`, que
@@ -74,7 +77,7 @@ mvn spring-boot:run
 {
   "patientId": 10,
   "doctorId": 7,
-  "appointmentDate": "2026-10-10T09:00:00",
+  "appointmentDate": "2030-10-10T09:00:00",
   "description": "Consulta de rotina - cardiologia"
 }
 ```
@@ -108,7 +111,7 @@ O payload segue o contrato usado pelo history-service:
   "patientName": null,
   "doctorId": 7,
   "doctorName": null,
-  "appointmentDate": "2026-10-10T09:00:00",
+  "appointmentDate": "2030-10-10T09:00:00",
   "description": "Consulta de rotina - cardiologia"
 }
 ```
