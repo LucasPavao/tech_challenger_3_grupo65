@@ -1,0 +1,1147 @@
+{
+  "info": {
+    "name": "Tech Challenge Fase 3 — Grupo 65",
+    "description": "Colecao unica dos dois microsservicos do projeto.\n\n| Servico | URL |\n|---|---|\n| appointment-service (principal) | http://localhost:8080 |\n| history-service | http://localhost:8081 |\n| RabbitMQ Management | http://localhost:15672 (guest/guest) |\n\n**Antes de comecar:** `make up` na raiz do projeto e espere `make ps` mostrar os cinco containers `healthy`. Se voce criar um agendamento antes de o history-service ter subido pela primeira vez, a fila ainda nao existe e a mensagem e descartada em silencio.\n\n**Ordem sugerida:** pasta 0 (Health) para confirmar o ambiente, depois a pasta 3 (Fluxo E2E) no Collection Runner para ver a integracao inteira funcionando. As pastas 1 e 2 servem para explorar rota a rota.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "appointmentUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "historyUrl",
+      "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "rabbitUrl",
+      "value": "http://localhost:15672",
+      "type": "string"
+    },
+    {
+      "key": "rabbitUser",
+      "value": "guest",
+      "type": "string"
+    },
+    {
+      "key": "rabbitPassword",
+      "value": "guest",
+      "type": "string"
+    },
+    {
+      "key": "exchange",
+      "value": "history.exchange",
+      "type": "string"
+    },
+    {
+      "key": "queue",
+      "value": "history.queue",
+      "type": "string"
+    },
+    {
+      "key": "routingKey",
+      "value": "history.created",
+      "type": "string"
+    },
+    {
+      "key": "patientId",
+      "value": "10",
+      "type": "string"
+    },
+    {
+      "key": "doctorId",
+      "value": "7",
+      "type": "string"
+    },
+    {
+      "key": "appointmentId",
+      "value": "1",
+      "type": "string"
+    },
+    {
+      "key": "futureDate",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2ePatientId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2eAppointmentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "e2eTentativas",
+      "value": "0",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "0. Health",
+      "description": "Comece sempre por aqui. Se `db` ou `rabbit` estiverem DOWN, nada adiante vai funcionar — e a causa costuma estar em `docker compose logs <servico>-app`.",
+      "item": [
+        {
+          "name": "Health — appointment-service (8080)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/actuator/health",
+            "description": "Deve responder UP, com os componentes `db` e `rabbit` tambem UP."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('servico UP', () => pm.expect(b.status).to.eql('UP'));",
+                  "if (b.components) {",
+                  "  pm.test('banco UP', () => pm.expect(b.components.db.status).to.eql('UP'));",
+                  "  pm.test('rabbit UP', () => pm.expect(b.components.rabbit.status).to.eql('UP'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health — history-service (8081)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{historyUrl}}/actuator/health",
+            "description": "Mesma checagem do appointment. O `rabbit` UP aqui indica que o consumidor conectou no broker."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('servico UP', () => pm.expect(b.status).to.eql('UP'));",
+                  "if (b.components) {",
+                  "  pm.test('banco UP', () => pm.expect(b.components.db.status).to.eql('UP'));",
+                  "  pm.test('rabbit UP', () => pm.expect(b.components.rabbit.status).to.eql('UP'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "1. Appointment (REST)",
+      "description": "API do servico principal, em http://localhost:8080. Toda criacao ou mudanca de status publica um evento no RabbitMQ que o history-service consome.",
+      "item": [
+        {
+          "name": "Criar agendamento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// appointmentDate precisa estar no futuro (validacao @Future)",
+                  "const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('futureDate', d.toISOString().slice(0, 19));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('devolve id', () => pm.expect(b.id).to.be.a('number'));",
+                  "pm.test('nasce SCHEDULED', () => pm.expect(b.status).to.eql('SCHEDULED'));",
+                  "// guarda para as proximas requisicoes desta pasta",
+                  "pm.collectionVariables.set('appointmentId', b.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{futureDate}}\",\n  \"description\": \"Consulta de rotina - cardiologia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Salva o `id` retornado na variavel `appointmentId`, usada pelas requisicoes seguintes."
+          }
+        },
+        {
+          "name": "Buscar por id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('e o agendamento criado', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('appointmentId'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar todos",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/appointments"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('devolve uma lista', () => pm.expect(pm.response.json()).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar por paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/appointments/patient/{{patientId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('todos sao do paciente', () => pm.response.json().forEach(a => pm.expect(a.patientId).to.eql(Number(pm.collectionVariables.get('patientId')))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Atualizar agendamento (remarcar)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// nova data, tambem no futuro",
+                  "const d = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('futureDate', d.toISOString().slice(0, 19));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data mudou', () => pm.expect(pm.response.json().appointmentDate).to.include(pm.collectionVariables.get('futureDate').slice(0, 10)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{futureDate}}\",\n  \"description\": \"Consulta remarcada - cardiologia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Substitui os dados do agendamento. Publica um novo evento para o history-service."
+          }
+        },
+        {
+          "name": "Concluir atendimento (status COMPLETED)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Valores aceitos: SCHEDULED, COMPLETED, CANCELLED."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ficou COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar outro agendamento (para cancelar)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('futureDate', d.toISOString().slice(0, 19));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "// COMPLETED e CANCELLED sao estados terminais: o agendamento anterior ja foi concluido,",
+                  "// entao o cancelamento precisa de um agendamento novo.",
+                  "pm.collectionVariables.set('appointmentId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{futureDate}}\",\n  \"description\": \"Consulta de rotina - cardiologia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A API recusa alterar um agendamento ja concluido ou cancelado (422). Por isso o cancelamento e demonstrado num agendamento novo."
+          }
+        },
+        {
+          "name": "Cancelar agendamento (status CANCELLED)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"CANCELLED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Leva o agendamento ao estado final. Tentar alterar depois disso devolve 422."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ficou CANCELLED', () => pm.expect(pm.response.json().status).to.eql('CANCELLED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Erro — data no passado (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"2020-01-01T09:00:00\",\n  \"description\": \"Data invalida\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "A validacao @Future rejeita datas passadas. Serve para conferir o tratamento de erro da API."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.response.to.have.status(400));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Erro — alterar agendamento em estado final (422)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SCHEDULED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "O agendamento acabou de ser cancelado. A regra de negocio impede reabri-lo."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "pm.test('explica o motivo', () => pm.expect(pm.response.text()).to.match(/cancelada|concluida|conclu/i));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Erro — agendamento inexistente (404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/appointments/999999"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. History (GraphQL)",
+      "description": "Consulta do historico em http://localhost:8081/graphql. Alternativa no navegador: http://localhost:8081/graphiql, com autocomplete do schema.",
+      "item": [
+        {
+          "name": "patientHistory — ultimo evento de cada consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($pid: ID!) {\n  patientHistory(patientId: $pid) {\n    appointmentId\n    eventStatus\n    appointmentDate\n    description\n  }\n}",
+                "variables": "{\n  \"pid\": \"{{patientId}}\"\n}"
+              }
+            },
+            "description": "Da consulta mais recente para a mais antiga."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);",
+                  "pm.test('devolve uma lista', () => pm.expect(b.data.patientHistory).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "appointmentTimeline — trilha completa da consulta",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($aid: ID!) {\n  appointmentTimeline(appointmentId: $aid) {\n    eventStatus\n    appointmentDate\n    occurredAt\n  }\n}",
+                "variables": "{\n  \"aid\": \"{{appointmentId}}\"\n}"
+              }
+            },
+            "description": "Do evento mais antigo ao mais recente. E aqui que o historico append-only aparece: cada mudanca no appointment vira uma linha nova."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "patientHistory — todos os campos do schema",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($pid: ID!) {\n  patientHistory(patientId: $pid) {\n    id\n    appointmentId\n    patientId\n    patientName\n    doctorId\n    doctorName\n    description\n    appointmentDate\n    eventStatus\n    occurredAt\n  }\n}",
+                "variables": "{\n  \"pid\": \"{{patientId}}\"\n}"
+              }
+            },
+            "description": "Util para ver o contrato inteiro de MedicalRecord."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Paciente sem historico — lista vazia, nao erro",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: \"999999\") {\n    appointmentId\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "description": "Comportamento correto e uma lista vazia."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('sem erros', () => pm.expect(b.errors).to.be.undefined);",
+                  "pm.test('lista vazia', () => pm.expect(b.data.patientHistory).to.eql([]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Erro — id nao numerico (BAD_REQUEST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "{\n  patientHistory(patientId: \"abc\") {\n    appointmentId\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "description": "Confere o tratamento de erro do GraphQL."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "pm.test('devolve erro', () => pm.expect(b.errors).to.be.an('array').that.is.not.empty);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Fluxo E2E (rode com o Runner)",
+      "description": "Sequencia completa: health -> criar agendamento -> ver chegar no historico via RabbitMQ -> evoluir o status -> ver a trilha crescer.\n\nUse o Collection Runner **nesta pasta**, na ordem em que estao. O passo 4 tenta ate 10 vezes enquanto o evento nao chega; configure um Delay de 500ms no Runner para dar tempo ao consumidor.\n\nCada execucao usa um patientId aleatorio, entao pode rodar quantas vezes quiser sem limpar o banco.",
+      "item": [
+        {
+          "name": "1. Health do appointment-service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{appointmentUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('appointment-service UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Health do history-service",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{historyUrl}}/actuator/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('history-service UP', () => pm.expect(pm.response.json().status).to.eql('UP'));",
+                  "// so faz sentido seguir se os dois estao de pe",
+                  "if (pm.response.json().status !== 'UP') { pm.execution.setNextRequest(null); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Criar agendamento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// paciente novo a cada execucao, para a assercao do passo 4 valer",
+                  "pm.collectionVariables.set('e2ePatientId', Math.floor(Math.random() * 900000) + 100000);",
+                  "const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('futureDate', d.toISOString().slice(0, 19));",
+                  "pm.collectionVariables.set('e2eTentativas', 0);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.collectionVariables.set('e2eAppointmentId', b.id);",
+                  "console.log('agendamento ' + b.id + ' criado para o paciente ' + pm.collectionVariables.get('e2ePatientId'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{e2ePatientId}},\n  \"doctorId\": 7,\n  \"appointmentDate\": \"{{futureDate}}\",\n  \"description\": \"Fluxo E2E via Postman\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "4. Historico recebeu o evento? (tenta ate 10x)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($pid: ID!) {\n  patientHistory(patientId: $pid) {\n    appointmentId\n    eventStatus\n    description\n  }\n}",
+                "variables": "{\n  \"pid\": \"{{e2ePatientId}}\"\n}"
+              }
+            },
+            "description": "A entrega e assincrona: o appointment publica no RabbitMQ e o history consome. Por isso a repeticao."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "const registros = (b.data && b.data.patientHistory) || [];",
+                  "let tentativas = Number(pm.collectionVariables.get('e2eTentativas') || 0);",
+                  "",
+                  "if (registros.length === 0 && tentativas < 10) {",
+                  "  pm.collectionVariables.set('e2eTentativas', tentativas + 1);",
+                  "  console.log('evento ainda nao chegou, tentativa ' + (tentativas + 1) + '/10');",
+                  "  pm.execution.setNextRequest('4. Historico recebeu o evento? (tenta ate 10x)');",
+                  "} else {",
+                  "  pm.test('o evento chegou no history-service via RabbitMQ', () => pm.expect(registros).to.not.be.empty);",
+                  "  if (registros.length) {",
+                  "    pm.test('e o agendamento que criamos', () => pm.expect(String(registros[0].appointmentId)).to.eql(String(pm.collectionVariables.get('e2eAppointmentId'))));",
+                  "    pm.test('chegou como SCHEDULED', () => pm.expect(registros[0].eventStatus).to.eql('SCHEDULED'));",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Concluir o atendimento",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{appointmentUrl}}/appointments/{{e2eAppointmentId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ficou COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));",
+                  "pm.collectionVariables.set('e2eTentativas', 0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. A trilha cresceu? (tenta ate 10x)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{historyUrl}}/graphql",
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($aid: ID!) {\n  appointmentTimeline(appointmentId: $aid) {\n    eventStatus\n    occurredAt\n    appointmentDate\n  }\n}",
+                "variables": "{\n  \"aid\": \"{{e2eAppointmentId}}\"\n}"
+              }
+            },
+            "description": "Deve conter pelo menos duas linhas: o SCHEDULED da criacao e o COMPLETED da conclusao."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const b = pm.response.json();",
+                  "const trilha = (b.data && b.data.appointmentTimeline) || [];",
+                  "let tentativas = Number(pm.collectionVariables.get('e2eTentativas') || 0);",
+                  "",
+                  "if (trilha.length < 2 && tentativas < 10) {",
+                  "  pm.collectionVariables.set('e2eTentativas', tentativas + 1);",
+                  "  console.log('segundo evento ainda nao chegou, tentativa ' + (tentativas + 1) + '/10');",
+                  "  pm.execution.setNextRequest('6. A trilha cresceu? (tenta ate 10x)');",
+                  "} else {",
+                  "  pm.test('a trilha tem os dois eventos', () => pm.expect(trilha.length).to.be.at.least(2));",
+                  "  pm.test('o historico e append-only (o SCHEDULED continua la)', () => pm.expect(trilha.map(e => e.eventStatus)).to.include('SCHEDULED'));",
+                  "  pm.test('e registrou a conclusao', () => pm.expect(trilha.map(e => e.eventStatus)).to.include('COMPLETED'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. RabbitMQ (diagnostico)",
+      "description": "Publica eventos direto no broker pela API de management, sem passar pelo appointment-service. Serve para testar o history-service isoladamente e para exercitar cenarios que o appointment ainda nao produz, como RESCHEDULED.\n\nInterface web: http://localhost:15672 (guest/guest).",
+      "item": [
+        {
+          "name": "Publicar SCHEDULED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"SCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-09-12T14:00:00Z\\\", \\\"appointmentId\\\": {{appointmentId}}, \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-12-01T09:00:00\\\", \\\"description\\\": \\\"Consulta agendada direto no broker\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a exchange roteou para alguma fila', () => pm.expect(pm.response.json().routed).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publicar RESCHEDULED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"RESCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-09-12T15:00:00Z\\\", \\\"appointmentId\\\": {{appointmentId}}, \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-12-01T09:00:00\\\", \\\"description\\\": \\\"Remarcada direto no broker\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a exchange roteou para alguma fila', () => pm.expect(pm.response.json().routed).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Publicar COMPLETED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"COMPLETED\\\", \\\"occurredAt\\\": \\\"2026-09-12T16:00:00Z\\\", \\\"appointmentId\\\": {{appointmentId}}, \\\"patientId\\\": {{patientId}}, \\\"patientName\\\": \\\"Maria Souza\\\", \\\"doctorId\\\": 7, \\\"doctorName\\\": \\\"Dr. Joao Lima\\\", \\\"appointmentDate\\\": \\\"2026-12-01T09:00:00\\\", \\\"description\\\": \\\"Concluida direto no broker\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('a exchange roteou para alguma fila', () => pm.expect(pm.response.json().routed).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payload fora do contrato — deve cair na DLQ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{rabbitUrl}}/api/exchanges/%2F/{{exchange}}/publish",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"properties\": { \"content_type\": \"application/json\", \"delivery_mode\": 2 },\n  \"routing_key\": \"{{routingKey}}\",\n  \"payload\": \"{\\\"eventId\\\": \\\"{{$guid}}\\\", \\\"eventStatus\\\": \\\"SCHEDULED\\\", \\\"occurredAt\\\": \\\"2026-09-12T17:00:00Z\\\", \\\"appointmentId\\\": 99, \\\"patientId\\\": {{patientId}}, \\\"doctorId\\\": 7, \\\"appointmentDate\\\": \\\"2026-12-01T09:00:00\\\", \\\"campoInexistente\\\": \\\"quebra o contrato\\\"}\",\n  \"payload_encoding\": \"string\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "O history-service rejeita payload fora do contrato e manda para a dead letter queue.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('publicado', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Conferir a DLQ (le sem consumir)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{rabbitUrl}}/api/queues/%2F/{{queue}}.dlq/get",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"count\": 10,\n  \"ackmode\": \"ack_requeue_true\",\n  \"encoding\": \"auto\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "`ack_requeue_true` devolve as mensagens para a fila depois de ler.",
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "{{rabbitUser}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{rabbitPassword}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "console.log('mensagens na DLQ: ' + pm.response.json().length);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

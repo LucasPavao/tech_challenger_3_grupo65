@@ -20,7 +20,7 @@ set -a; source .env; set +a
 
 Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz
 `COMPOSE_PROFILES=apps`, então o comando também sobe o container `history-app`, que
-ocupa a 8080 — e o `./mvnw spring-boot:run` seguinte morre com `Port already in use`.
+ocupa a 8081 — e o `./mvnw spring-boot:run` seguinte morre com `Port already in use`.
 (Alternativa, de dentro da raiz do monorepo: `make infra`.)
 
 **Cuidado:** como todos os serviços compartilham o mesmo projeto Compose (`name:
@@ -33,10 +33,10 @@ RabbitMQ (exchange, fila, binding e DLQ) e o Flyway cria a tabela.
 
 | Endereço | O quê |
 |---|---|
-| <http://localhost:8080/graphql> | endpoint GraphQL |
-| <http://localhost:8080/graphiql> | IDE web para explorar o schema |
+| <http://localhost:8081/graphql> | endpoint GraphQL |
+| <http://localhost:8081/graphiql> | IDE web para explorar o schema |
 | <http://localhost:15672> | console do RabbitMQ (`guest` / `guest`) |
-| <http://localhost:8080/actuator/health> | `db` e `rabbit` devem estar `UP` |
+| <http://localhost:8081/actuator/health> | `db` e `rabbit` devem estar `UP` |
 
 ## Testar o serviço
 
@@ -69,7 +69,7 @@ mensagem está em [`docs/messaging/appointment-event.md`](docs/messaging/appoint
 **Estado atual de cada consulta do paciente** — uma entrada por consulta:
 
 ```bash
-curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
   -d '{"query":"{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -83,7 +83,7 @@ curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json
 **Trilha completa de uma consulta** — todo o histórico, com a data original preservada:
 
 ```bash
-curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
   -d '{"query":"{ appointmentTimeline(appointmentId: 42) { eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -185,7 +185,7 @@ docker compose down -v    # zera banco e fila
 |---|---|---|
 | `Connection refused` na 5432 ou 5672 | containers ainda subindo | `docker compose ps` e aguardar `(healthy)` |
 | `port is already allocated` | porta ocupada por outro serviço | mudar `DB_PORT` no `.env` deste serviço (a porta do RabbitMQ é `RABBITMQ_PORT` em `infra/.env`) |
-| `Port 8080 was already in use` | o container `history-app` já está rodando (subiu com `docker compose up -d` sem `COMPOSE_PROFILES=`) e você está tentando rodar `./mvnw spring-boot:run` por cima | `docker compose stop history-app` antes de rodar pela IDE/`mvnw` |
+| `Port 8081 was already in use` | o container `history-app` já está rodando (subiu com `docker compose up -d` sem `COMPOSE_PROFILES=`) e você está tentando rodar `./mvnw spring-boot:run` por cima | `docker compose stop history-app` antes de rodar pela IDE/`mvnw` |
 | Fila com `0 consumers` | aplicação não conectou | conferir o log de inicialização e as credenciais AMQP |
 | Publiquei mas nada em `medical_history` | payload fora do contrato, ou `content_type` ausente | ver a `history.queue.dlq` e o log; comparar com o contrato |
 | `variable is not set` no `docker compose up` | falta o `.env` | `cp .env.example .env` |
@@ -203,7 +203,7 @@ Variáveis deste serviço (`history-service/.env`):
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `history_db` / `postgres` / `postgres` |
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` |
 | `RABBITMQ_EXCHANGE` / `RABBITMQ_QUEUE` / `RABBITMQ_ROUTING_KEY` | `history.exchange` / `history.queue` / `history.created` |
-| `SERVER_PORT` | `8080` |
+| `SERVER_PORT` | `8081` |
 | `GRAPHIQL_ENABLED` | `true` |
 
 Variáveis do broker compartilhado, em `infra/.env` (não neste `.env`):

@@ -3,8 +3,8 @@
 # Cria um agendamento e espera o registro correspondente aparecer no historico.
 set -euo pipefail
 
-APPOINTMENT_URL="${APPOINTMENT_URL:-http://localhost:8081}"
-HISTORY_URL="${HISTORY_URL:-http://localhost:8080}"
+APPOINTMENT_URL="${APPOINTMENT_URL:-http://localhost:8080}"
+HISTORY_URL="${HISTORY_URL:-http://localhost:8081}"
 TIMEOUT_SEGUNDOS="${TIMEOUT_SEGUNDOS:-60}"
 
 # patientId aleatorio para o teste ser repetivel sem limpar o banco

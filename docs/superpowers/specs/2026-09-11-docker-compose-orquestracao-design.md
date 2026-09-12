@@ -131,8 +131,8 @@ Convenção de portas — cada serviço escolhe a próxima livre no seu próprio
 
 | Serviço | App | Postgres | Banco |
 |---|---|---|---|
-| history-service | 8080 | 5432 | `history_db` |
-| appointment-service | 8081 | 5433 | `appointment_db` |
+| appointment-service | 8080 | 5433 | `appointment_db` |
+| history-service | 8081 | 5432 | `history_db` |
 
 RabbitMQ: 5672 (AMQP) e 15672 (Management).
 
@@ -203,7 +203,7 @@ Atalhos de conveniência na raiz: `setup` (copia os `.env.example` ainda inexist
 | Arquivo | Mudança |
 |---|---|
 | `appointment-service/.../config/RabbitMqConfig.java` | `DirectExchange` → `TopicExchange` nas exchanges de history e notification |
-| `appointment-service/.env.example` | banco `appointment_db` na porta 5433, app em 8081 |
+| `appointment-service/.env.example` | banco `appointment_db` na porta 5433, app em 8080 |
 | `history-service/.env.example` | banco `history_db` na porta 5432; chaves de RabbitMQ migram para `infra/.env` |
 | `history-service/docker-compose.yml` | reescrito no formato acima |
 | `appointment-service/docker-compose.yml` | reescrito no formato acima |
@@ -280,7 +280,7 @@ volumes:
 
 ### 2. `notification-service/.env.example`
 
-Usa a próxima faixa de portas livre (8080/5432 e 8081/5433 já estão tomadas):
+Usa a próxima faixa de portas livre (8080/5433 e 8081/5432 já estão tomadas):
 
 ```
 COMPOSE_PROFILES=apps
@@ -335,8 +335,8 @@ não aceita glob em `include`.
 1. `docker compose config` resolve sem erro na raiz e em cada serviço, com um único
    `rabbitmq` e sem colisão de portas.
 2. `make up` deixa todos os containers em estado `healthy`.
-3. Ponta a ponta: `POST` de agendamento no appointment-service (8081) resulta em
-   registro consultável via GraphQL no history-service (8080). Exercita Postgres,
+3. Ponta a ponta: `POST` de agendamento no appointment-service (8080) resulta em
+   registro consultável via GraphQL no history-service (8081). Exercita Postgres,
    RabbitMQ, a mudança de exchange e a rede de uma vez.
 4. Independência: após `docker compose down -v` na raiz, `docker compose up` dentro de
    `history-service/` sobe exatamente três containers e nenhum do appointment-service.

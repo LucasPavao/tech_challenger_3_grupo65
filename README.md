@@ -29,8 +29,8 @@ O design completo está em
 | `make logs` / `make ps` | logs e estado dos containers |
 | `make down` / `make clean` | derruba tudo (`clean` também apaga os volumes) |
 
-Endpoints: appointment-service em http://localhost:8081, history-service em
-http://localhost:8080 (GraphiQL em `/graphiql`), RabbitMQ Management em
+Endpoints: appointment-service (serviço principal) em http://localhost:8080,
+history-service em http://localhost:8081 (GraphiQL em `/graphiql`), RabbitMQ Management em
 http://localhost:15672 (guest/guest).
 
 **Cuidado:** como todos os serviços formam um único projeto Compose, `docker compose down`
@@ -54,20 +54,133 @@ diretamente sem antes gerar os `.env`.
 
 | Serviço | App | Postgres | Banco |
 |---|---|---|---|
-| history-service | 8080 | 5432 | `history_db` |
-| appointment-service | 8081 | 5433 | `appointment_db` |
+| appointment-service | 8080 | 5433 | `appointment_db` |
+| history-service | 8081 | 5432 | `history_db` |
 
 RabbitMQ: 5672 (AMQP) e 15672 (Management).
 
 Os arquivos `.env` não são versionados. Rode `make setup` para gerá-los a partir dos
 `.env.example` — ele não sobrescreve os que já existem.
 
-### Adicionando um novo serviço
+## Fluxo de teste
+
+A coleção Postman com todas as rotas está em
+[`docs/postman/tech-challenge-grupo65.postman_collection.json`](docs/postman/tech-challenge-grupo65.postman_collection.json).
+Importe esse único arquivo no Postman: ele cobre os dois serviços, separado em pastas.
+
+| Pasta | Para quê |
+|---|---|
+| **0. Health** | confirmar que o ambiente está de pé antes de qualquer coisa |
+| **1. Appointment (REST)** | as rotas do serviço principal, uma a uma |
+| **2. History (GraphQL)** | consultas do histórico, incluindo os casos de erro |
+| **3. Fluxo E2E** | a integração inteira encadeada, para rodar no Collection Runner |
+| **4. RabbitMQ** | publicar eventos direto no broker e inspecionar a DLQ |
+
+> **Se você já tinha um `.env`:** as portas das aplicações mudaram (o appointment-service
+> passou a ser a 8080). O `make setup` **não** sobrescreve `.env` existentes, então apague
+> `history-service/.env` e `appointment-service/.env` e rode `make setup` de novo — ou
+> ajuste o `SERVER_PORT` de cada um à mão. Sem isso os serviços sobem trocados e as
+> requisições devolvem 404.
+
+### Passo 0 — subir o ambiente
+
+```bash
+make setup   # só na primeira vez, cria os .env
+make up
+make ps      # espere os cinco containers ficarem healthy
+```
+
+Esperar o `healthy` importa: a exchange é declarada pelo appointment-service, mas a fila é
+declarada pelo history-service. Se você criar um agendamento antes de o history-service ter
+subido pela primeira vez, não existe fila ligada à exchange e o RabbitMQ **descarta a
+mensagem em silêncio** — o agendamento é criado, mas nunca aparece no histórico.
+
+### Passo 1 — health dos serviços
+
+| Serviço | URL |
+|---|---|
+| appointment-service | <http://localhost:8080/actuator/health> |
+| history-service | <http://localhost:8081/actuator/health> |
+| RabbitMQ Management | <http://localhost:15672> (guest / guest) |
+
+Os dois respondem com os componentes detalhados. Confira que `db` **e** `rabbit` estão `UP`
+nos dois — um `rabbit` DOWN significa que a integração não vai funcionar, mesmo com o
+serviço respondendo normalmente nas rotas REST.
+
+### Passo 2 — criar um agendamento
+
+```bash
+curl -s -X POST http://localhost:8080/appointments \
+  -H 'content-type: application/json' \
+  -d '{"patientId":777,"doctorId":7,"appointmentDate":"2026-12-01T09:00:00","description":"Consulta de rotina"}'
+```
+
+Responde `201` com o `id` gerado. A `appointmentDate` precisa estar **no futuro** — data no
+passado devolve `400`. Guarde o `id` e o `patientId`, usados nos próximos passos.
+
+### Passo 3 — consultar o histórico via GraphQL
+
+O evento viaja pelo RabbitMQ, então leva um instante. Consulte pelo `patientId` do passo 2:
+
+```bash
+curl -s -X POST http://localhost:8081/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ patientHistory(patientId: \"777\") { appointmentId eventStatus appointmentDate description } }"}'
+```
+
+O `patientId` vai **entre aspas**: é um `ID!` no schema. No navegador, o GraphiQL em
+<http://localhost:8081/graphiql> dá autocomplete do schema e é mais rápido para explorar.
+
+### Passo 4 — evoluir o status e ver a trilha crescer
+
+```bash
+curl -s -X PATCH http://localhost:8080/appointments/1/status \
+  -H 'content-type: application/json' -d '{"status":"COMPLETED"}'
+```
+
+Valores aceitos: `SCHEDULED`, `COMPLETED`, `CANCELLED`. `COMPLETED` e `CANCELLED` são
+estados finais — tentar alterar depois devolve `422`. Agora consulte a trilha completa
+daquele agendamento:
+
+```bash
+curl -s -X POST http://localhost:8081/graphql \
+  -H 'content-type: application/json' \
+  -d '{"query":"{ appointmentTimeline(appointmentId: \"1\") { eventStatus occurredAt appointmentDate } }"}'
+```
+
+Devem aparecer **duas linhas**: o `SCHEDULED` da criação e o `COMPLETED` da conclusão. Esse
+é o ponto que demonstra a arquitetura — o histórico é append-only, então cada mudança no
+appointment-service vira um registro novo em vez de sobrescrever o anterior.
+
+### Atalho: o fluxo inteiro automatizado
+
+```bash
+make smoke
+```
+
+Faz exatamente os passos 1 a 3 e falha com diagnóstico se a integração estiver quebrada.
+Rode antes de investigar qualquer coisa à mão — ele separa "o ambiente está ruim" de "a
+requisição está errada".
+
+No Postman, o equivalente é a pasta **3. Fluxo E2E** no Collection Runner, com um Delay de
+500 ms. Ela usa um `patientId` aleatório a cada execução, então pode rodar quantas vezes
+quiser sem limpar o banco.
+
+### Quando o histórico não recebe o evento
+
+| Sintoma | Causa provável | Como verificar |
+|---|---|---|
+| `patientHistory` volta vazio | o history-service ainda não tinha subido quando você publicou | Management → Queues → `history.queue` deve ter 1 consumidor |
+| 404 nas rotas do appointment | `.env` desatualizado, serviços trocados de porta | `curl localhost:8080/appointments` deve responder 200 |
+| mensagem na `history.queue.dlq` | payload fora do contrato | `docs/messaging/appointment-event.md` no history-service |
+| `rabbit` DOWN no health | broker não subiu ou app não alcança a rede `shared` | `docker compose logs rabbitmq` |
+
+## Adicionando um novo serviço
 
 Exemplo com um `notification-service`. São quatro arquivos novos e **uma** edição fora
 da pasta do serviço.
 
-#### 1. `notification-service/docker-compose.yml`
+### 1. `notification-service/docker-compose.yml`
 
 ```yaml
 name: grupo65                       # convenção: mesmo projeto para todos
@@ -123,9 +236,9 @@ volumes:
   notification-postgres-data:
 ```
 
-#### 2. `notification-service/.env.example`
+### 2. `notification-service/.env.example`
 
-Usa a próxima faixa de portas livre (8080/5432 e 8081/5433 já estão tomadas):
+Usa a próxima faixa de portas livre (8080/5433 e 8081/5432 já estão tomadas):
 
 ```
 COMPOSE_PROFILES=apps
@@ -137,12 +250,12 @@ DB_PORT=5434
 SERVER_PORT=8082
 ```
 
-#### 3. `Dockerfile` e `.dockerignore`
+### 3. `Dockerfile` e `.dockerignore`
 
 Copiados de qualquer serviço existente, sem alteração — o `mvnw` e o `pom.xml` vêm do
 contexto de build.
 
-#### 4. Uma entrada no `docker-compose.yml` da raiz
+### 4. Uma entrada no `docker-compose.yml` da raiz
 
 ```yaml
   - path: ./notification-service/docker-compose.yml
@@ -154,14 +267,14 @@ Depois, `make setup && make up`.
 Não esqueça de atualizar a tabela de **Portas** deste README com a faixa usada pelo
 novo serviço — é a outra edição central que esta receita não cobre sozinha.
 
-#### O que não se toca
+### O que não se toca
 
 `infra/`, o compose dos outros serviços, o `Makefile` (o `ENVS` é derivado dos
 `.env.example` existentes, então não precisa de edição), nenhum `.env` alheio. O único
 acoplamento central é a entrada no `include` — não há como eliminá-la, pois o Compose
 não aceita glob em `include`.
 
-#### Armadilhas
+### Armadilhas
 
 - **`name: grupo65` no topo é obrigatório.** Sem ele o serviço vira um projeto Compose
   próprio e sobe um RabbitMQ paralelo em vez de reusar o compartilhado.
