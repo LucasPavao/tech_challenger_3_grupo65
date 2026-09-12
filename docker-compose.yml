@@ -1,5 +1,6 @@
 name: grupo65
 
+# Requer os .env dos servicos — rode 'make setup' antes do primeiro uso.
 include:
   - path: ./history-service/docker-compose.yml
     env_file: ./history-service/.env

@@ -17,8 +17,32 @@ COMPOSE_PROFILES= docker compose up -d   # só a infra, para rodar a app pela ID
 O design completo está em
 [`docs/superpowers/specs/2026-09-11-docker-compose-orquestracao-design.md`](docs/superpowers/specs/2026-09-11-docker-compose-orquestracao-design.md).
 
-> **Nota:** a estrutura descrita abaixo está em implementação. A receita já vale como
-> convenção acordada pelo grupo.
+### Comandos
+
+| Comando | O que faz |
+|---|---|
+| `make setup` | cria os `.env` a partir dos `.env.example` (não sobrescreve) |
+| `make up` | sobe tudo: bancos, RabbitMQ e aplicações |
+| `make build` | idem, reconstruindo as imagens |
+| `make infra` | sobe só os bancos e o RabbitMQ, para rodar as apps pela IDE |
+| `make smoke` | teste ponta a ponta appointment → RabbitMQ → history |
+| `make logs` / `make ps` | logs e estado dos containers |
+| `make down` / `make clean` | derruba tudo (`clean` também apaga os volumes) |
+
+Endpoints: appointment-service em http://localhost:8081, history-service em
+http://localhost:8080 (GraphiQL em `/graphiql`), RabbitMQ Management em
+http://localhost:15672 (guest/guest).
+
+**Cuidado:** como todos os serviços formam um único projeto Compose, `docker compose down`
+de dentro da pasta de um serviço derruba o projeto **inteiro**. Para parar apenas um,
+use `docker compose stop <serviço>-app <serviço>-postgres`.
+
+Num clone novo, rode `make setup` antes de qualquer coisa: os arquivos `.env` não são
+versionados, e `docker compose up`/`docker compose config` na raiz falham com um erro
+genérico de arquivo não encontrado se eles ainda não existirem, porque o `include`
+referencia o `.env` de cada serviço via `env_file`. `make up` e `make build` já chamam
+`make setup` primeiro, então o problema só aparece se você rodar `docker compose`
+diretamente sem antes gerar os `.env`.
 
 ### Portas
 
