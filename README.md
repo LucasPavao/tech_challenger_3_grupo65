@@ -79,6 +79,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["${DB_PORT}:5432"]
     volumes: [notification-postgres-data:/var/lib/postgresql/data]
+    networks: [notification-net]         # só a rede privada do serviço
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -93,13 +94,17 @@ services:
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
     ports: ["${SERVER_PORT}:${SERVER_PORT}"]
-    networks: [default, shared]          # `shared` dá acesso ao broker
+    networks: [notification-net, shared] # rede privada + `shared` para o broker
     depends_on:
       notification-postgres: { condition: service_healthy }
       rabbitmq:              { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
       start_period: 40s
+
+networks:
+  notification-net:
+    driver: bridge
 
 volumes:
   notification-postgres-data:
@@ -143,8 +148,12 @@ não aceita glob em `include`.
 
 - **`name: grupo65` no topo é obrigatório.** Sem ele o serviço vira um projeto Compose
   próprio e sobe um RabbitMQ paralelo em vez de reusar o compartilhado.
-- **`networks: [default, shared]` na aplicação.** Omitir `shared` e ela não enxerga o
-  broker; incluir `shared` no Postgres quebra o isolamento entre bancos.
+- **Cada serviço precisa da sua própria rede privada (`<serviço>-net`).** O Postgres
+  fica só nela; a aplicação entra nela **e** na `shared`. Omitir `shared` na aplicação
+  e ela não enxerga o broker; colocar o Postgres na `shared` (ou usar a rede `default`
+  do projeto) quebra o isolamento entre bancos — como todos os composes declaram o
+  mesmo `name: grupo65`, a rede `default` é uma só para o projeto inteiro, compartilhada
+  por todos os serviços.
 - **Exchanges sempre `TopicExchange`** no código Spring. Dois serviços declarando a
   mesma exchange com tipos diferentes derrubam o channel com `PRECONDITION_FAILED` —
   foi exatamente o conflito encontrado entre history e appointment.
