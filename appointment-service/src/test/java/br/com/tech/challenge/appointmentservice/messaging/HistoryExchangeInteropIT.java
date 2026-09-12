@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 class HistoryExchangeInteropIT {
 
-    private static final String EXCHANGE = "history.exchange";
+    private static final String EXCHANGE = "appointment.exchange";
     private static final String QUEUE = "history.queue";
     private static final String ROUTING_KEY = "history.created";
 
@@ -66,11 +66,9 @@ class HistoryExchangeInteropIT {
         registry.add("spring.rabbitmq.port", RABBIT::getAmqpPort);
         registry.add("spring.rabbitmq.username", RABBIT::getAdminUsername);
         registry.add("spring.rabbitmq.password", RABBIT::getAdminPassword);
-        registry.add("app.messaging.history-exchange", () -> EXCHANGE);
-        registry.add("app.messaging.history-routing-key", () -> ROUTING_KEY);
-        registry.add("app.messaging.notification-exchange", () -> "notification.exchange");
-        registry.add("app.messaging.notification-routing-key", () -> "notification.created");
-        registry.add("app.messaging.publish-notification", () -> false);
+        registry.add("app.rabbitmq.appointment-exchange", () -> EXCHANGE);
+        registry.add("app.rabbitmq.history-routing-key", () -> ROUTING_KEY);
+        registry.add("app.rabbitmq.notification-routing-key", () -> "notification.created");
     }
 
     /**

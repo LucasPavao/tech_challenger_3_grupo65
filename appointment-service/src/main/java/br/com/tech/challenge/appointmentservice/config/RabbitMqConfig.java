@@ -6,23 +6,19 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.json.JsonMapper;
 
 @Configuration
 public class RabbitMqConfig {
 
     @Bean
-    TopicExchange historyExchange(MessagingProperties properties) {
-        return new TopicExchange(properties.historyExchange(), true, false);
+    TopicExchange appointmentExchange(MessagingProperties properties) {
+        return new TopicExchange(properties.appointmentExchange(), true, false);
     }
 
     @Bean
-    TopicExchange notificationExchange(MessagingProperties properties) {
-        return new TopicExchange(properties.notificationExchange(), true, false);
-    }
-
-    @Bean
-    JacksonJsonMessageConverter jacksonJsonMessageConverter() {
-        return new JacksonJsonMessageConverter();
+    JacksonJsonMessageConverter jacksonJsonMessageConverter(JsonMapper jsonMapper) {
+        return new JacksonJsonMessageConverter(jsonMapper);
     }
 
     @Bean
