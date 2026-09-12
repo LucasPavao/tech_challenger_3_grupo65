@@ -1,6 +1,6 @@
 .PHONY: setup up build infra down clean logs ps smoke
 
-ENVS := .env infra/.env history-service/.env appointment-service/.env
+ENVS := $(patsubst %.example,%,$(wildcard .env.example */.env.example))
 
 setup: ## Cria os .env que ainda nao existem, a partir dos .env.example
 	@for f in $(ENVS); do \
