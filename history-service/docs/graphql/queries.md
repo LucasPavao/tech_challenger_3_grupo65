@@ -1,7 +1,7 @@
 # Queries GraphQL do history-service
 
 Endpoint: `POST /graphql`
-IDE web para explorar o schema: http://localhost:8080/graphiql
+IDE web para explorar o schema: http://localhost:8081/graphiql
 
 O `history-service` é um log **append-only** — cada evento do `appointment-service` vira uma linha
 nova. As duas queries oferecem as duas leituras úteis desse log.
@@ -92,7 +92,7 @@ até a 22.0 enquanto o Boot 4.1 gerencia graphql-java 25.0.
 ## Testar por `curl`
 
 ```bash
-curl -s -X POST http://localhost:8080/graphql \
+curl -s -X POST http://localhost:8081/graphql \
   -H 'content-type: application/json' \
   -d '{"query":"{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
