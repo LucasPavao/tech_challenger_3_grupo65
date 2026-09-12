@@ -1,6 +1,56 @@
 # tech_challenger_3_grupo65
 Backend API desenvolvida para o Tech Challenger FIAP - Fase 3 - Grupo 65.
 
+## Pré-requisitos
+
+| Ferramenta | Versão | Para quê |
+|---|---|---|
+| Docker com Compose v2 | Compose **2.20 ou superior** (testado na 2.40.2) | subir o projeto. Confira com `docker compose version` — o antigo `docker-compose`, com hífen, é a v1 e **não** funciona |
+| `make` | qualquer | atalhos de setup. Já vem no Linux e no macOS (Xcode Command Line Tools) |
+| JDK 21 | 21 | só para rodar os testes ou as aplicações fora do Docker |
+
+As portas **8080, 8081, 5432, 5433, 5672 e 15672** precisam estar livres. Um PostgreSQL
+instalado localmente costuma ocupar a 5432.
+
+**No Windows, use o WSL2** e clone o repositório *dentro* do sistema de arquivos do Linux
+(`~/...`, não `/mnt/c/...`): o `make` só existe lá, e o Docker Desktop se integra ao WSL2.
+Se você clonou antes de o repositório ter um `.gitattributes`, **clone de novo** — um
+checkout feito no Windows pode ter convertido os scripts para CRLF, e aí o build falha com
+`sh: ./mvnw: not found`.
+
+## Primeiros passos
+
+```bash
+git clone https://github.com/LucasPavao/tech_challenger_3_grupo65
+cd tech_challenger_3_grupo65
+make setup   # cria os .env a partir dos .env.example
+make up      # constrói as imagens e sobe tudo
+make ps      # espere os cinco containers ficarem healthy
+```
+
+A **primeira** execução de `make up` demora alguns minutos: ela baixa as imagens base e todas
+as dependências Maven dos dois serviços. As seguintes reaproveitam o cache e sobem em
+segundos. Se parecer travado, acompanhe com `make logs`.
+
+Sobre os arquivos `.env`:
+
+- **Não são versionados.** Sem eles, qualquer `docker compose` — na raiz ou dentro de um
+  serviço — falha com `stat .../.env: no such file or directory`. Rode `make setup` antes de
+  tudo; `make up` e `make build` já o chamam.
+- **`make setup` nunca sobrescreve** um `.env` existente. Se um `.env.example` mudar, apague o
+  `.env` correspondente e rode `make setup` de novo. Um `.env` desatualizado faz os serviços
+  subirem nas portas erradas e as requisições devolverem `404`.
+
+Sem `make` (Windows fora do WSL2, no Git Bash ou no PowerShell), o equivalente é:
+
+```bash
+cp .env.example .env
+cp infra/.env.example infra/.env
+cp history-service/.env.example history-service/.env
+cp appointment-service/.env.example appointment-service/.env
+docker compose up -d --build
+```
+
 ## Arquitetura Docker
 
 Cada serviço é autocontido: tem seu próprio `docker-compose.yml`, seu próprio banco
@@ -9,8 +59,9 @@ serviços via `include`, e o RabbitMQ é compartilhado, definido uma única vez 
 `infra/`.
 
 ```
-docker compose up            # na raiz: sobe todos os serviços
-docker compose up            # dentro de um serviço: sobe só ele + o broker
+make setup                               # antes de tudo: cria os .env (sem eles, os comandos abaixo falham)
+docker compose up                        # na raiz: sobe todos os serviços
+docker compose up                        # dentro de um serviço: sobe só ele + o broker
 COMPOSE_PROFILES= docker compose up -d   # só a infra, para rodar a app pela IDE
 ```
 
@@ -43,13 +94,6 @@ agendamento antes de o history-service terminar de subir, a mensagem é descarta
 silêncio pelo RabbitMQ — espere os dois serviços ficarem saudáveis (`make ps`) antes de
 testar.
 
-Num clone novo, rode `make setup` antes de qualquer coisa: os arquivos `.env` não são
-versionados, e `docker compose up`/`docker compose config` na raiz falham com um erro
-genérico de arquivo não encontrado se eles ainda não existirem, porque o `include`
-referencia o `.env` de cada serviço via `env_file`. `make up` e `make build` já chamam
-`make setup` primeiro, então o problema só aparece se você rodar `docker compose`
-diretamente sem antes gerar os `.env`.
-
 ### Portas
 
 | Serviço | App | Postgres | Banco |
@@ -59,8 +103,17 @@ diretamente sem antes gerar os `.env`.
 
 RabbitMQ: 5672 (AMQP) e 15672 (Management).
 
-Os arquivos `.env` não são versionados. Rode `make setup` para gerá-los a partir dos
-`.env.example` — ele não sobrescreve os que já existem.
+### Problemas comuns na instalação
+
+| Sintoma | Causa | Solução |
+|---|---|---|
+| `stat .../.env: no such file or directory` | os `.env` ainda não foram criados | `make setup` na raiz |
+| `sh: ./mvnw: not found` durante o build | scripts com fim de linha CRLF, de um checkout feito no Windows | clonar de novo, de preferência dentro do WSL2 |
+| `failed to bind host port ... address already in use` | outro processo já usa a porta — comum com um PostgreSQL local na 5432 | parar esse processo, ou trocar a porta no `.env` do serviço (`DB_PORT`, `SERVER_PORT`) ou em `infra/.env` (`RABBITMQ_PORT`) |
+| `404` nas rotas de um serviço | `.env` desatualizado, com portas antigas | apagar o `.env` do serviço e rodar `make setup` |
+| `FATAL: database "mydatabase" does not exist` ao rodar pela IDE | código anterior à correção dos valores padrão de conexão | atualizar a branch |
+| `make: command not found` | Windows fora do WSL2 | usar o WSL2, ou os comandos equivalentes de [Primeiros passos](#primeiros-passos) |
+| erro sobre `include` ao rodar `docker compose` | Compose anterior à 2.20, ou o `docker-compose` v1 | atualizar o Docker e conferir com `docker compose version` |
 
 ## Fluxo de teste
 
@@ -73,12 +126,6 @@ Importe esse único arquivo no Postman: ele cobre os dois serviços, separado em
 | **0. Health** | confirmar que o ambiente está de pé antes de qualquer coisa |
 | **1. Appointment (REST)** | as rotas do serviço principal, uma a uma |
 | **2. History (GraphQL)** | consultas do histórico, incluindo os casos de erro |
-
-> **Se você já tinha um `.env`:** as portas das aplicações mudaram (o appointment-service
-> passou a ser a 8080). O `make setup` **não** sobrescreve `.env` existentes, então apague
-> `history-service/.env` e `appointment-service/.env` e rode `make setup` de novo — ou
-> ajuste o `SERVER_PORT` de cada um à mão. Sem isso os serviços sobem trocados e as
-> requisições devolvem 404.
 
 ### Passo 0 — subir o ambiente
 
@@ -110,7 +157,7 @@ serviço respondendo normalmente nas rotas REST.
 ```bash
 curl -s -X POST http://localhost:8080/appointments \
   -H 'content-type: application/json' \
-  -d '{"patientId":777,"doctorId":7,"appointmentDate":"2026-12-01T09:00:00","description":"Consulta de rotina"}'
+  -d '{"patientId":777,"doctorId":7,"appointmentDate":"2030-12-01T09:00:00","description":"Consulta de rotina"}'
 ```
 
 Responde `201` com o `id` gerado. A `appointmentDate` precisa estar **no futuro** — data no
@@ -136,6 +183,10 @@ trilha. Se você criar um agendamento e depois remarcá-lo, essa query mostra ap
 hoje". Para ver o histórico completo, use `appointmentTimeline` (passo 4).
 
 ### Passo 4 — evoluir o status e ver a trilha crescer
+
+Os comandos abaixo usam o id `1`, que é o do primeiro agendamento de um banco novo. Se você
+já criou outros — pelo Postman ou pelo `make smoke` —, troque o `1` pelo `id` retornado no
+passo 2, nas duas chamadas.
 
 ```bash
 curl -s -X PATCH http://localhost:8080/appointments/1/status \
