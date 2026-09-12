@@ -86,7 +86,10 @@ class HistoryExchangeInteropIT {
 
         RabbitAdmin admin = new RabbitAdmin(factory);
         TopicExchange exchange = new TopicExchange(EXCHANGE, true, false);
-        Queue queue = QueueBuilder.durable(QUEUE).build();
+        Queue queue = QueueBuilder.durable(QUEUE)
+                .deadLetterExchange(EXCHANGE + ".dlx")
+                .deadLetterRoutingKey(ROUTING_KEY)
+                .build();
 
         admin.declareExchange(exchange);
         admin.declareQueue(queue);
@@ -115,5 +118,8 @@ class HistoryExchangeInteropIT {
         String payload = new String(received.getBody(), StandardCharsets.UTF_8);
         assertThat(payload).contains("\"appointmentId\":42");
         assertThat(payload).contains("\"eventStatus\":\"SCHEDULED\"");
+        // Trava o formato de serializacao da data: o branch migrou de Jackson 2 para
+        // Jackson 3, e uma mudanca silenciosa aqui quebraria o parsing no history-service.
+        assertThat(payload).contains("\"appointmentDate\":\"2026-10-10T09:00:00\"");
     }
 }
