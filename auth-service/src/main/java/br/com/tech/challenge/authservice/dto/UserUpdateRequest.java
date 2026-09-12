@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size;
 public record UserUpdateRequest(
         @NotBlank @Size(max = 50) String name,
         @NotBlank @Email @Size(max = 100) String email,
-        @Size(min = 10) String password,
+        @Size(min = 8) String password,
         @NotNull RoleEnum role
 ) {
 }

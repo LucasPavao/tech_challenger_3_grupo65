@@ -41,6 +41,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
                         .requestMatchers("/auth/login").authenticated()
                         .requestMatchers("/users/**").hasRole("ADMIN")
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults())
                 .oauth2ResourceServer(conf -> conf.jwt(jwt ->

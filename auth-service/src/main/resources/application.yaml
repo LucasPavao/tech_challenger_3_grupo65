@@ -20,3 +20,8 @@ spring:
     baseline-version: 0
     out-of-order: false
     validate-on-migrate: false
+
+server:
+  port: ${SERVER_PORT:8082}
+
+spring.web.error.include-stacktrace: never
