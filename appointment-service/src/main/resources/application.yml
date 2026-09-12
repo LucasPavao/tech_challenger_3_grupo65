@@ -46,3 +46,7 @@ management:
   endpoint:
     health:
       show-details: always
+
+security:
+  jwt:
+    issuer: ${JWT_ISSUER:auth-service}
