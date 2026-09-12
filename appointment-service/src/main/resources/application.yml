@@ -28,7 +28,7 @@ spring:
     virtual-host: ${RABBITMQ_VHOST:/}
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${SERVER_PORT:8080}
 
 app:
   messaging:

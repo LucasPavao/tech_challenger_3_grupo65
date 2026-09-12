@@ -1,6 +1,6 @@
 package br.com.tech.challenge.appointmentservice.config;
 
-import org.springframework.amqp.core.DirectExchange;
+import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
@@ -11,13 +11,13 @@ import org.springframework.context.annotation.Configuration;
 public class RabbitMqConfig {
 
     @Bean
-    DirectExchange historyExchange(MessagingProperties properties) {
-        return new DirectExchange(properties.historyExchange(), true, false);
+    TopicExchange historyExchange(MessagingProperties properties) {
+        return new TopicExchange(properties.historyExchange(), true, false);
     }
 
     @Bean
-    DirectExchange notificationExchange(MessagingProperties properties) {
-        return new DirectExchange(properties.notificationExchange(), true, false);
+    TopicExchange notificationExchange(MessagingProperties properties) {
+        return new TopicExchange(properties.notificationExchange(), true, false);
     }
 
     @Bean

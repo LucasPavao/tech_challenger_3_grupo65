@@ -29,10 +29,20 @@ Microsserviço responsável pelo agendamento de consultas do Tech Challenge FIAP
 
 ```bash
 cp .env.example .env
-docker compose up -d
+COMPOSE_PROFILES= docker compose up -d   # só Postgres + RabbitMQ, sem o container da app
 ```
 
-O serviço usa a porta `8081` por padrão para não conflitar com o history-service, que atualmente usa `8080`.
+Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz
+`COMPOSE_PROFILES=apps`, então o comando também sobe o container `appointment-app`, que
+ocupa a 8080 — e o `./mvnw spring-boot:run` seguinte morre com `Port already in use`.
+(Alternativa, de dentro da raiz do monorepo: `make infra`.)
+
+**Cuidado:** como todos os serviços compartilham o mesmo projeto Compose (`name:
+grupo65`), `docker compose down` de dentro desta pasta derruba o projeto **inteiro**,
+não só o appointment-service. Para parar apenas este serviço, use
+`docker compose stop appointment-app appointment-postgres`.
+
+O serviço usa a porta `8080` por padrão — é o serviço principal do projeto. O history-service usa a `8081`.
 
 ## Executar
 
