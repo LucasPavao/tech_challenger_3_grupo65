@@ -12,11 +12,13 @@ visível na primeira.
 Requisitos: Docker, JDK 21. Maven vem no wrapper.
 
 ```bash
-cp .env.example .env          # valores padrão já servem para desenvolvimento
-COMPOSE_PROFILES= docker compose up -d   # só Postgres + RabbitMQ, sem o container da app
-set -a; source .env; set +a
+cp .env.example .env                      # .env deste serviço
+cp ../infra/.env.example ../infra/.env    # .env do RabbitMQ compartilhado — sem ele o compose falha
+COMPOSE_PROFILES= docker compose up -d    # só Postgres + RabbitMQ, sem o container da app
 ./mvnw spring-boot:run
 ```
+
+Os dois `cp` sobrescrevem arquivos que já existam. Para criar só os que faltam, rode `make setup` na raiz do monorepo.
 
 Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz
 `COMPOSE_PROFILES=apps`, então o comando também sobe o container `history-app`, que
