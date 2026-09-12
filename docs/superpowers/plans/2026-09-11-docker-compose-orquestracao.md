@@ -430,6 +430,8 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - history-postgres-data:/var/lib/postgresql/data
+    networks:
+      - history-net
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -451,7 +453,7 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
-      - default
+      - history-net
       - shared
     restart: on-failure
     depends_on:
@@ -466,13 +468,24 @@ services:
       retries: 5
       start_period: 40s
 
+networks:
+  history-net:
+    driver: bridge
+
 volumes:
   history-postgres-data:
 ```
 
 Por que `env_file` lista dois arquivos: o `.env` do serviço traz banco, porta e topologia; `../infra/.env` traz `RABBITMQ_USER`/`RABBITMQ_PASSWORD`/`RABBITMQ_VHOST` sem duplicá-los. O bloco `environment` vem depois e vence os dois, trocando os endereços de `localhost`/porta publicada para os nomes e portas internos da rede Docker.
 
-Por que o Postgres **não** está em `shared`: assim o appointment-service não consegue alcançar o banco do history nem por engano. O isolamento vira topologia.
+Por que o Postgres está só em `history-net`, uma rede privada do serviço, e não em
+`shared`: como `name: grupo65` faz de todos os composes um único projeto, a rede
+`default` do projeto é compartilhada por todo mundo — colocar o Postgres nela (ou
+deixá-lo sem `networks:`, o que cai em `default`) o exporia ao appointment-service e
+quebraria o isolamento entre bancos. Uma rede `history-net` dedicada, com só
+`history-postgres` e `history-app` nela, garante que o appointment-service não alcança
+o banco do history nem por engano. O `history-app` entra também em `shared` porque é
+só por ela que ele alcança o RabbitMQ.
 
 - [ ] **Step 6: Validar a configuração**
 
@@ -481,7 +494,7 @@ cp history-service/.env.example history-service/.env
 cd history-service && docker compose config
 ```
 
-Esperado: três serviços (`rabbitmq`, `history-postgres`, `history-app`), nenhuma variável vazia, `history-app` nas redes `default` e `shared`, `history-postgres` só em `default`.
+Esperado: três serviços (`rabbitmq`, `history-postgres`, `history-app`), nenhuma variável vazia, `history-app` nas redes `history-net` e `shared`, `history-postgres` só em `history-net`.
 
 - [ ] **Step 7: Subir o serviço sozinho**
 
@@ -620,6 +633,8 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - appointment-postgres-data:/var/lib/postgresql/data
+    networks:
+      - appointment-net
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -641,7 +656,7 @@ services:
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
-      - default
+      - appointment-net
       - shared
     restart: on-failure
     depends_on:
@@ -656,9 +671,22 @@ services:
       retries: 5
       start_period: 40s
 
+networks:
+  appointment-net:
+    driver: bridge
+
 volumes:
   appointment-postgres-data:
 ```
+
+Por que o Postgres está só em `appointment-net`, uma rede privada do serviço, e não em
+`shared`: como `name: grupo65` faz de todos os composes um único projeto, a rede
+`default` do projeto é compartilhada por todo mundo — colocar o Postgres nela (ou
+deixá-lo sem `networks:`, o que cai em `default`) o exporia ao history-service e
+quebraria o isolamento entre bancos. Uma rede `appointment-net` dedicada, com só
+`appointment-postgres` e `appointment-app` nela, garante que o history-service não
+alcança o banco do appointment nem por engano. O `appointment-app` entra também em
+`shared` porque é só por ela que ele alcança o RabbitMQ.
 
 - [ ] **Step 6: Validar a configuração**
 
@@ -667,7 +695,9 @@ cp appointment-service/.env.example appointment-service/.env
 cd appointment-service && docker compose config
 ```
 
-Esperado: três serviços (`rabbitmq`, `appointment-postgres`, `appointment-app`), Postgres publicando em 5433, app em 8081.
+Esperado: três serviços (`rabbitmq`, `appointment-postgres`, `appointment-app`),
+Postgres publicando em 5433, app em 8081, `appointment-app` nas redes
+`appointment-net` e `shared`, `appointment-postgres` só em `appointment-net`.
 
 - [ ] **Step 7: Subir o serviço sozinho e provar a API**
 
