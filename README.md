@@ -73,8 +73,6 @@ Importe esse único arquivo no Postman: ele cobre os dois serviços, separado em
 | **0. Health** | confirmar que o ambiente está de pé antes de qualquer coisa |
 | **1. Appointment (REST)** | as rotas do serviço principal, uma a uma |
 | **2. History (GraphQL)** | consultas do histórico, incluindo os casos de erro |
-| **3. Fluxo E2E** | a integração inteira encadeada, para rodar no Collection Runner |
-| **4. RabbitMQ** | publicar eventos direto no broker e inspecionar a DLQ |
 
 > **Se você já tinha um `.env`:** as portas das aplicações mudaram (o appointment-service
 > passou a ser a 8080). O `make setup` **não** sobrescreve `.env` existentes, então apague
@@ -131,6 +129,12 @@ curl -s -X POST http://localhost:8081/graphql \
 O `patientId` vai **entre aspas**: é um `ID!` no schema. No navegador, o GraphiQL em
 <http://localhost:8081/graphiql> dá autocomplete do schema e é mais rápido para explorar.
 
+**`patientHistory` devolve só o último evento de cada consulta** — é o estado atual, não a
+trilha. Se você criar um agendamento e depois remarcá-lo, essa query mostra apenas o
+`RESCHEDULED`; o `SCHEDULED` continua gravado, mas colapsado. É intencional: a query usa
+`DISTINCT ON (appointment_id)` para responder "como está cada consulta deste paciente
+hoje". Para ver o histórico completo, use `appointmentTimeline` (passo 4).
+
 ### Passo 4 — evoluir o status e ver a trilha crescer
 
 ```bash
@@ -162,9 +166,7 @@ Faz exatamente os passos 1 a 3 e falha com diagnóstico se a integração estive
 Rode antes de investigar qualquer coisa à mão — ele separa "o ambiente está ruim" de "a
 requisição está errada".
 
-No Postman, o equivalente é a pasta **3. Fluxo E2E** no Collection Runner, com um Delay de
-500 ms. Ela usa um `patientId` aleatório a cada execução, então pode rodar quantas vezes
-quiser sem limpar o banco.
+É também a forma mais rápida de confirmar o ambiente antes de uma apresentação.
 
 ### Quando o histórico não recebe o evento
 
