@@ -17,6 +17,7 @@ import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.amqp.autoconfigure.RabbitAutoConfiguration;
+import org.springframework.boot.jackson.autoconfigure.JacksonAutoConfiguration;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -43,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         RabbitMqConfig.class,
         AppointmentEventPublisher.class
 })
-@ImportAutoConfiguration(RabbitAutoConfiguration.class)
+@ImportAutoConfiguration({RabbitAutoConfiguration.class, JacksonAutoConfiguration.class})
 @Testcontainers
 class HistoryExchangeInteropIT {
 
@@ -86,7 +87,7 @@ class HistoryExchangeInteropIT {
         TopicExchange exchange = new TopicExchange(EXCHANGE, true, false);
         Queue queue = QueueBuilder.durable(QUEUE)
                 .deadLetterExchange(EXCHANGE + ".dlx")
-                .deadLetterRoutingKey(ROUTING_KEY)
+                .deadLetterRoutingKey(ROUTING_KEY + ".dlq")
                 .build();
 
         admin.declareExchange(exchange);

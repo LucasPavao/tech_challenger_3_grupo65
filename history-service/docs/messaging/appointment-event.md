@@ -1,19 +1,23 @@
 # Contrato do AppointmentEvent
 
-Mensagem publicada pelo `appointment-service` e consumida pelo `history-service`.
+Mensagem publicada pelo `appointment-service` e consumida pelo `history-service` e pelo
+`notification-service`.
 
 ## Topologia
 
 | Item | Valor padrão | Variável de ambiente |
 |---|---|---|
-| Exchange (topic, durável) | `history.exchange` | `RABBITMQ_EXCHANGE` |
+| Exchange (topic, durável) | `appointment.exchange` | `RABBITMQ_EXCHANGE` |
 | Queue (durável) | `history.queue` | `RABBITMQ_QUEUE` |
 | Routing key | `history.created` | `RABBITMQ_ROUTING_KEY` |
-| Dead letter exchange | `history.exchange.dlx` | derivada |
+| Dead letter exchange | `appointment.exchange.dlx` | derivada |
 | Dead letter queue | `history.queue.dlq` | derivada |
 
 A topologia é declarada pelo `history-service` em `config/RabbitMQConfig.java` e é toda
 configurável por `.env` — alinhar os nomes com a Pessoa 4 não exige mudança de código.
+
+O `notification-service` consome a mesma exchange, com a fila `notification.queue` e a routing key
+`notification.created`. O `appointment-service` publica cada evento uma vez para cada routing key.
 
 ## Payload
 

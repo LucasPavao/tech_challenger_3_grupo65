@@ -120,12 +120,14 @@ O payload segue o contrato usado pelo history-service:
 
 ## RabbitMQ
 
-Por padrão o produtor publica para:
+Cada evento é publicado duas vezes na mesma exchange, uma para cada consumidor:
 
-- Exchange: `history.exchange`
-- Routing key: `history.created`
+| Exchange (topic) | Routing key | Consumidor | Variável da routing key |
+|---|---|---|---|
+| `appointment.exchange` | `history.created` | history-service | `RABBITMQ_HISTORY_ROUTING_KEY` |
+| `appointment.exchange` | `notification.created` | notification-service | `RABBITMQ_NOTIFICATION_ROUTING_KEY` |
 
-O envio para notification-service está preparado, mas desligado por padrão (`PUBLISH_NOTIFICATION=false`) até o grupo definir o contrato/topologia final do serviço de notificações.
+A exchange é configurada por `RABBITMQ_EXCHANGE` e precisa ter o mesmo valor nos três serviços.
 
 ## Regras de negócio implementadas
 

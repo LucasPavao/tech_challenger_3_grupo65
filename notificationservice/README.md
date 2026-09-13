@@ -36,119 +36,114 @@ appointment-service --publica AppointmentEvent--> RabbitMQ (notification.queue)
 
 ## Formato do evento consumido (AppointmentEvent)
 
+É o mesmo contrato consumido pelo history-service, documentado em
+[`history-service/docs/messaging/appointment-event.md`](../history-service/docs/messaging/appointment-event.md):
+
 ```json
 {
+  "eventId": "8f14e45f-ceea-467a-9f4b-1d2c3e4f5a6b",
+  "eventStatus": "SCHEDULED",
+  "occurredAt": "2026-09-12T14:00:00Z",
   "appointmentId": 1,
   "patientId": 10,
+  "patientName": null,
   "doctorId": 5,
-  "dateTime": "2026-09-10T14:30:00",
-  "description": "Consulta de rotina",
-  "eventType": "CREATED"
+  "doctorName": null,
+  "appointmentDate": "2030-09-10T14:30:00",
+  "description": "Consulta de rotina"
 }
 ```
 
-`eventType` é `CREATED` ou `UPDATED`. Este contrato precisa ser idêntico
-ao publicado pelo appointment-service — qualquer mudança de nome de campo
-lá precisa ser replicada aqui.
+`eventStatus` é `SCHEDULED`, `RESCHEDULED`, `CANCELLED` ou `COMPLETED`, e define a mensagem
+enviada ao paciente. Um campo fora do contrato faz a mensagem ir para a `notification.queue.dlq`
+(`spring.jackson.deserialization.fail-on-unknown-properties=true`).
 
-## Pré-requisitos
+## Topologia RabbitMQ
 
-| Ferramenta | Versão usada na validação |
-|---|---|
-| Docker Engine | 28.5 |
-| Docker Compose | v2.40 (plugin `docker compose`) |
-| JDK | 21 |
-| Maven | via wrapper `./mvnw` (não precisa instalar) |
+| Item | Valor padrão | Variável |
+|---|---|---|
+| Exchange (topic) | `appointment.exchange` | `RABBITMQ_EXCHANGE` |
+| Fila | `notification.queue` | `RABBITMQ_QUEUE` |
+| Routing key | `notification.created` | `RABBITMQ_ROUTING_KEY` |
+| Dead letter | `appointment.exchange.dlx` → `notification.queue.dlq` | derivada |
 
-## 1. Configurar as variáveis de ambiente
+## Rodando junto com os outros serviços
+
+Da raiz do monorepo — é o caminho normal:
 
 ```bash
-cp .env.example .env
+make setup
+make up
+curl -s http://localhost:8082/actuator/health   # status, db e rabbit devem estar UP
 ```
 
-Por padrão as portas ficam **diferentes** das do `history-service`
-(Postgres em `5433`, RabbitMQ em `5673`/`15673`) para dar pra rodar os
-dois serviços ao mesmo tempo na sua máquina sem conflito de porta.
+O fluxo completo de teste está no [README da raiz](../README.md#fluxo-de-teste).
 
-## 2. Subir a infraestrutura (modo isolado)
+## Rodando pela IDE
 
-```bash
-docker compose up -d
-docker compose ps   # aguardar (healthy) nos dois containers
-```
-
-> Isso sobe um RabbitMQ só para você testar sozinha. Quando for integrar
-> de verdade com o `appointment-service`, aponte `RABBITMQ_HOST` (e as
-> portas) para o broker compartilhado do grupo, e não suba este RabbitMQ
-> junto — para não ter dois brokers desencontrados.
-
-## 3. Rodar a aplicação
+Requisitos: Docker, JDK 21. Maven vem no wrapper.
 
 ```bash
-set -a; source .env; set +a
+cp .env.example .env                      # .env deste serviço
+cp ../infra/.env.example ../infra/.env    # .env do RabbitMQ compartilhado — sem ele o compose falha
+COMPOSE_PROFILES= docker compose up -d    # só Postgres + RabbitMQ, sem o container da app
 ./mvnw spring-boot:run
 ```
 
-## 4. Verificar se subiu
+Os dois `cp` sobrescrevem arquivos que já existam. Para criar só os que faltam, rode `make setup`
+na raiz do monorepo.
 
-```bash
-curl -s http://localhost:8081/actuator/health
-```
+Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz `COMPOSE_PROFILES=apps`,
+então o comando também sobe o container `notification-app`, que ocupa a 8082 — e o
+`./mvnw spring-boot:run` seguinte morre com `Port already in use`.
 
-Espera-se `status`, `db` e `rabbit` como `UP`.
+**Cuidado:** como todos os serviços compartilham o mesmo projeto Compose (`name: grupo65`),
+`docker compose down` de dentro desta pasta derruba o projeto **inteiro**. Para parar apenas este
+serviço, use `docker compose stop notification-app notification-postgres`.
 
-## 5. Testar o fluxo publicando um evento manualmente
+## Testar publicando um evento manualmente
 
-Enquanto o `appointment-service` não estiver publicando de verdade, dá
-pra simular pelo console do RabbitMQ (`http://localhost:15673`, usuário
-`guest`/`guest`) em **Exchanges → appointment.exchange → Publish message**,
-ou via curl:
+Normalmente os eventos vêm do appointment-service: criar um agendamento em
+`POST http://localhost:8080/appointments` já gera a notificação. Para testar este serviço
+isoladamente, publique direto no broker pelo console (<http://localhost:15672>, `guest`/`guest`),
+em **Exchanges → `appointment.exchange` → Publish message**, ou via curl:
 
 ```bash
 curl -u guest:guest -H "content-type:application/json" -X POST \
   -d '{"properties":{"content_type":"application/json"},
        "routing_key":"notification.created",
-       "payload":"{\"appointmentId\":1,\"patientId\":10,\"doctorId\":5,\"dateTime\":\"2026-09-10T14:30:00\",\"description\":\"Consulta de rotina\",\"eventType\":\"CREATED\"}",
+       "payload":"{\"eventId\":\"8f14e45f-ceea-467a-9f4b-1d2c3e4f5a6b\",\"eventStatus\":\"SCHEDULED\",\"occurredAt\":\"2026-09-12T14:00:00Z\",\"appointmentId\":1,\"patientId\":10,\"doctorId\":5,\"appointmentDate\":\"2030-09-10T14:30:00\",\"description\":\"Consulta de rotina\"}",
        "payload_encoding":"string"}' \
-  http://localhost:15673/api/exchanges/%2F/appointment.exchange/publish
+  http://localhost:15672/api/exchanges/%2F/appointment.exchange/publish
 ```
 
-No log da aplicação deve aparecer `Evento recebido: appointmentId=1,
-eventType=CREATED`, seguido de `LEMBRETE ENVIADO - paciente=10, ...`.
-
-Depois, confirme via API:
+No log da aplicação deve aparecer `Evento de appointment recebido: appointmentId=1,
+eventStatus=SCHEDULED`, seguido de `LEMBRETE ENVIADO - paciente=10, ...`. Depois, confirme pela API:
 
 ```bash
-curl http://localhost:8081/notifications/patient/10
+curl http://localhost:8082/notifications/patient/10
 ```
 
-Deve retornar a notificação criada com `status: SENT`.
+Deve retornar a notificação com `status: SENT`.
 
-## 6. Rodar os testes
+## Rodar os testes
 
 ```bash
 ./mvnw test
 ```
 
-- `NotificationApplicationTests` — sobe o contexto Spring.
-- `NotificationServiceTest` — testes unitários (Mockito) cobrindo:
-  criação da notificação como `PENDING`, marcação como `SENT` após o
-  envio, mensagem diferente para `CREATED`/`UPDATED`, e busca por
-  paciente.
+Requer Docker: o teste que sobe o contexto usa Testcontainers.
 
-## 7. Encerrar o ambiente
-
-```bash
-docker compose down       # preserva os dados nos volumes
-docker compose down -v    # remove também os volumes
-```
+- `NotificationApplicationTests` — sobe o contexto Spring com Postgres e RabbitMQ em containers.
+- `NotificationServiceTest` — testes unitários (Mockito): notificação criada como `PENDING` e
+  marcada como `SENT` após o envio, mensagem para cada `eventStatus`, erro no envio mantendo
+  `PENDING`, e busca por paciente.
 
 ## Problemas comuns
 
 | Sintoma | Causa provável | Solução |
 |---|---|---|
-| `Connection refused: localhost:5433` ou `:5673` | containers ainda subindo ou parados | `docker compose ps` e aguardar `(healthy)` |
-| `port is already allocated` | outro serviço usando a porta | mudar a porta no `.env` |
-| Mensagem publicada mas nada acontece | routing key ou nome do exchange não batem com os deste serviço | conferir `app.rabbitmq.exchange`/`routing-key` no `.env` e no publish |
-| Notificação não aparece na consulta | evento com `patientId` diferente do consultado, ou mensagem foi para a DLQ | checar `notification.queue.dlq` no console do RabbitMQ |
-| `variable is not set` no `docker compose up` | falta o `.env` | `cp .env.example .env` |
+| `stat .../.env: no such file or directory` | faltam os `.env` | `make setup` na raiz |
+| `address already in use` na 5434 ou na 8082 | outro processo usando a porta | parar o processo, ou mudar `DB_PORT`/`SERVER_PORT` no `.env` |
+| agendamento criado, mas nenhuma notificação | `.env` apontando para outra exchange, ou o serviço subiu depois da publicação | conferir `RABBITMQ_EXCHANGE=appointment.exchange` e ver [Atualizando de uma versão anterior](../README.md#atualizando-de-uma-versão-anterior) |
+| mensagem na `notification.queue.dlq` | payload fora do contrato | comparar com o formato acima |
