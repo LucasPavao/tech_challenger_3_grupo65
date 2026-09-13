@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Teste ponta a ponta: appointment-service -> RabbitMQ -> history-service.
-# Cria um agendamento e espera o registro correspondente aparecer no historico.
+# Teste ponta a ponta: appointment-service -> RabbitMQ -> history-service e notification-service.
+# Cria um agendamento e espera o evento aparecer no historico e virar uma notificacao enviada.
 set -euo pipefail
 
 APPOINTMENT_URL="${APPOINTMENT_URL:-http://localhost:8080}"
 HISTORY_URL="${HISTORY_URL:-http://localhost:8081}"
+NOTIFICATION_URL="${NOTIFICATION_URL:-http://localhost:8082}"
 TIMEOUT_SEGUNDOS="${TIMEOUT_SEGUNDOS:-60}"
 
 # patientId aleatorio para o teste ser repetivel sem limpar o banco
 PATIENT_ID=$(( (RANDOM % 900000) + 100000 ))
 APPOINTMENT_DATE=$(date -u -d '+30 days' '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || date -u -v+30d '+%Y-%m-%dT%H:%M:%S')
 
-echo "==> 1/3 aguardando os servicos responderem"
-for url in "$APPOINTMENT_URL/actuator/health" "$HISTORY_URL/actuator/health"; do
+echo "==> 1/4 aguardando os servicos responderem"
+for url in "$APPOINTMENT_URL/actuator/health" "$HISTORY_URL/actuator/health" "$NOTIFICATION_URL/actuator/health"; do
   fim=$(( SECONDS + TIMEOUT_SEGUNDOS ))
   until curl -sf "$url" | grep -q '"status":"UP"'; do
     if (( SECONDS >= fim )); then
@@ -24,7 +25,7 @@ for url in "$APPOINTMENT_URL/actuator/health" "$HISTORY_URL/actuator/health"; do
   echo "    OK $url"
 done
 
-echo "==> 2/3 criando agendamento (patientId=$PATIENT_ID)"
+echo "==> 2/4 criando agendamento (patientId=$PATIENT_ID)"
 resposta=$(curl -s -w '\n%{http_code}' -X POST "$APPOINTMENT_URL/appointments" \
   -H 'Content-Type: application/json' \
   -d "{\"patientId\":$PATIENT_ID,\"doctorId\":7,\"appointmentDate\":\"$APPOINTMENT_DATE\",\"description\":\"Smoke test\"}") \
@@ -38,7 +39,7 @@ if [ "$http_code" != "201" ]; then
 fi
 echo "    resposta: $corpo"
 
-echo "==> 3/3 aguardando o evento chegar no history-service via RabbitMQ"
+echo "==> 3/4 aguardando o evento chegar no history-service via RabbitMQ"
 consulta="{\"query\":\"{ patientHistory(patientId: \\\"$PATIENT_ID\\\") { appointmentId eventStatus description } }\"}"
 fim=$(( SECONDS + TIMEOUT_SEGUNDOS ))
 while true; do
@@ -46,14 +47,31 @@ while true; do
     -H 'Content-Type: application/json' -d "$consulta" || echo '')
   if echo "$historico" | grep -q '"eventStatus":"SCHEDULED"'; then
     echo "    OK evento recebido: $historico"
-    echo
-    echo "SUCESSO: a comunicacao via RabbitMQ esta funcionando."
-    exit 0
+    break
   fi
   if (( SECONDS >= fim )); then
     echo "FALHA: o evento nao chegou ao history-service em ${TIMEOUT_SEGUNDOS}s" >&2
     echo "Ultima resposta do GraphQL: $historico" >&2
     echo "Investigue: docker compose logs history-app | grep -i rabbit" >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+echo "==> 4/4 aguardando a notificacao ser enviada pelo notification-service"
+fim=$(( SECONDS + TIMEOUT_SEGUNDOS ))
+while true; do
+  notificacoes=$(curl -sf "$NOTIFICATION_URL/notifications/patient/$PATIENT_ID" || echo '')
+  if echo "$notificacoes" | grep -q '"status":"SENT"'; then
+    echo "    OK notificacao enviada: $notificacoes"
+    echo
+    echo "SUCESSO: appointment -> RabbitMQ -> history e notification funcionando."
+    exit 0
+  fi
+  if (( SECONDS >= fim )); then
+    echo "FALHA: a notificacao nao foi enviada em ${TIMEOUT_SEGUNDOS}s" >&2
+    echo "Ultima resposta: $notificacoes" >&2
+    echo "Investigue: docker compose logs notification-app | grep -iE 'rabbit|notifica|flyway'" >&2
     exit 1
   fi
   sleep 2
