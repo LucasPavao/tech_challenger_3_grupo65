@@ -6,6 +6,8 @@ import br.com.tech.challenge.notificationservice.model.Notification;
 import br.com.tech.challenge.notificationservice.model.NotificationStatus;
 import br.com.tech.challenge.notificationservice.notification.NotificationSender;
 import br.com.tech.challenge.notificationservice.repository.NotificationRepository;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,10 +16,12 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -39,7 +43,10 @@ class NotificationServiceTest {
 
     @BeforeEach
     void setUp() {
-        notificationService = new NotificationService(notificationRepository, notificationSender);
+        notificationService = new NotificationService(
+                notificationRepository,
+                notificationSender,
+                Validation.buildDefaultValidatorFactory().getValidator());
     }
 
     @Test
@@ -112,6 +119,72 @@ class NotificationServiceTest {
     }
 
     @Test
+    void deveRejeitarEventoNuloSemGravarNemEnviar() {
+        assertThatThrownBy(() -> notificationService.processAppointmentEvent(null))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        verifyNoInteractions(notificationRepository, notificationSender);
+    }
+
+    @Test
+    void deveRejeitarEventoForaDoContratoSemGravarNemEnviar() {
+        AppointmentEvent semData = new AppointmentEvent(
+                UUID.randomUUID(), AppointmentEventStatus.SCHEDULED, Instant.parse("2026-09-12T14:00:00Z"),
+                1L, 10L, null, 5L, null, null, "Consulta de rotina");
+
+        assertThatThrownBy(() -> notificationService.processAppointmentEvent(semData))
+                .isInstanceOf(ConstraintViolationException.class)
+                .hasMessageContaining("appointmentDate");
+
+        verifyNoInteractions(notificationRepository, notificationSender);
+    }
+
+    @Test
+    void deveIgnorarReentregaDeEventoJaNotificado() {
+        AppointmentEvent evento = evento(AppointmentEventStatus.SCHEDULED);
+        Notification jaEnviada = notificacaoExistente(evento.eventId(), NotificationStatus.SENT);
+        when(notificationRepository.findByEventId(evento.eventId())).thenReturn(Optional.of(jaEnviada));
+
+        Notification result = notificationService.processAppointmentEvent(evento);
+
+        assertThat(result).isSameAs(jaEnviada);
+        verify(notificationRepository, never()).save(any(Notification.class));
+        verifyNoInteractions(notificationSender);
+    }
+
+    @Test
+    void deveReenviarNaMesmaLinhaQuandoANotificacaoFicouPending() {
+        AppointmentEvent evento = evento(AppointmentEventStatus.SCHEDULED);
+        Notification pendente = notificacaoExistente(evento.eventId(), NotificationStatus.PENDING);
+        when(notificationRepository.findByEventId(evento.eventId())).thenReturn(Optional.of(pendente));
+        when(notificationRepository.save(any(Notification.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Notification result = notificationService.processAppointmentEvent(evento);
+
+        assertThat(result).isSameAs(pendente);
+        assertThat(result.getId()).isEqualTo(7L);
+        assertThat(result.getStatus()).isEqualTo(NotificationStatus.SENT);
+        verify(notificationSender, times(1)).send(pendente);
+        verify(notificationRepository, times(1)).save(pendente);
+    }
+
+    @Test
+    void deveDevolverALinhaExistenteQuandoAInsercaoColideComOutroConsumer() {
+        AppointmentEvent evento = evento(AppointmentEventStatus.SCHEDULED);
+        Notification gravadaPeloOutro = notificacaoExistente(evento.eventId(), NotificationStatus.SENT);
+        when(notificationRepository.findByEventId(evento.eventId()))
+                .thenReturn(Optional.empty(), Optional.of(gravadaPeloOutro));
+        when(notificationRepository.save(any(Notification.class)))
+                .thenThrow(new DataIntegrityViolationException("uk_notifications_event_id"));
+
+        Notification result = notificationService.processAppointmentEvent(evento);
+
+        assertThat(result).isSameAs(gravadaPeloOutro);
+        verifyNoInteractions(notificationSender);
+    }
+
+    @Test
     void deveBuscarNotificacoesPorPaciente() {
         Long patientId = 10L;
         Notification notification = new Notification();
@@ -140,5 +213,18 @@ class NotificationServiceTest {
                 LocalDateTime.of(2030, 9, 10, 14, 30),
                 "Consulta de rotina"
         );
+    }
+
+    private static Notification notificacaoExistente(UUID eventId, NotificationStatus status) {
+        Notification notification = new Notification();
+        notification.setId(7L);
+        notification.setEventId(eventId);
+        notification.setEventStatus(AppointmentEventStatus.SCHEDULED);
+        notification.setAppointmentId(1L);
+        notification.setPatientId(10L);
+        notification.setMessage("Sua consulta foi agendada para 2030-09-10T14:30");
+        notification.setCreatedAt(LocalDateTime.of(2026, 9, 12, 14, 0));
+        notification.setStatus(status);
+        return notification;
     }
 }
