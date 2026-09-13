@@ -10,19 +10,20 @@ import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Topologia RabbitMQ EXCLUSIVA do notification-service.
+ * Topologia RabbitMQ para o notification-service.
  *
- * IMPORTANTE: o exchange abaixo (app.rabbitmq.exchange) precisa ser o MESMO
- * nome usado pelo appointment-service ao publicar o evento, e a routing-key
- * também precisa bater com o binding usado lá. Alinhar esses nomes com quem
- * está cuidando da mensageria (Pessoa 4) antes de integrar de verdade.
+ * O notification-service consome eventos do appointment-service através de um TopicExchange.
+ * Cada evento contém informações sobre mudanças nas consultas, que são processadas para
+ * envio de notificações/lembretes aos pacientes.
  *
- * A fila aqui é "notification.queue" - propositalmente diferente da
- * "history.queue" do history-service, para que os dois serviços NÃO
- * concorram pela mesma fila (competing consumers). Cada serviço deve ter
- * sua própria fila, ainda que ligada ao mesmo exchange.
+ * Topologia:
+ * - Exchange: appointment.exchange (TopicExchange)
+ * - Queue: notification.queue
+ * - Routing Key: notification.created (binding para cada evento de notificação)
+ * - DLQ: notification.queue.dlq (Dead Letter Queue para reprocessamento)
  */
 @Configuration
 public class RabbitMQConfig {
@@ -37,7 +38,7 @@ public class RabbitMQConfig {
     private String routingKey;
 
     @Bean
-    public TopicExchange notificationExchange() {
+    public TopicExchange appointmentExchange() {
         return new TopicExchange(exchangeName, true, false);
     }
 
@@ -45,34 +46,41 @@ public class RabbitMQConfig {
     public Queue notificationQueue() {
         return QueueBuilder.durable(queueName)
                 .deadLetterExchange(exchangeName + ".dlx")
-                .deadLetterRoutingKey(routingKey)
+                .deadLetterRoutingKey(routingKey + ".dlq")
                 .build();
     }
 
     @Bean
-    public Binding notificationBinding() {
-        return BindingBuilder.bind(notificationQueue()).to(notificationExchange()).with(routingKey);
-    }
-
-    @Bean
-    public TopicExchange notificationDeadLetterExchange() {
-        return new TopicExchange(exchangeName + ".dlx", true, false);
-    }
-
-    @Bean
-    public Queue notificationDeadLetterQueue() {
-        return QueueBuilder.durable(queueName + ".dlq").build();
-    }
-
-    @Bean
-    public Binding notificationDeadLetterBinding() {
-        return BindingBuilder.bind(notificationDeadLetterQueue())
-                .to(notificationDeadLetterExchange())
+    public Binding notificationBinding(Queue notificationQueue, TopicExchange appointmentExchange) {
+        return BindingBuilder.bind(notificationQueue)
+                .to(appointmentExchange)
                 .with(routingKey);
     }
 
     @Bean
-    public MessageConverter jsonMessageConverter() {
-        return new JacksonJsonMessageConverter();
+    public TopicExchange deadLetterExchange() {
+        return new TopicExchange(exchangeName + ".dlx", true, false);
+    }
+
+    @Bean
+    public Queue deadLetterQueue() {
+        return QueueBuilder.durable(queueName + ".dlq").build();
+    }
+
+    @Bean
+    public Binding deadLetterBinding(Queue deadLetterQueue, TopicExchange deadLetterExchange) {
+        return BindingBuilder.bind(deadLetterQueue)
+                .to(deadLetterExchange)
+                .with(routingKey + ".dlq");
+    }
+
+    /**
+     * Usa o JsonMapper auto-configurado pelo Spring Boot em vez de um mapper próprio,
+     * para que o listener respeite as propriedades spring.jackson.* — em especial
+     * deserialization.fail-on-unknown-properties, que manda payload fora do contrato para a DLQ.
+     */
+    @Bean
+    public MessageConverter jsonMessageConverter(JsonMapper jsonMapper) {
+        return new JacksonJsonMessageConverter(jsonMapper);
     }
 }

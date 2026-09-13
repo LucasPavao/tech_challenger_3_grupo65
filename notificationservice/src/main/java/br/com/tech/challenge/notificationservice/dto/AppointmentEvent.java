@@ -1,28 +1,26 @@
 package br.com.tech.challenge.notificationservice.dto;
 
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
+import jakarta.validation.constraints.NotNull;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 /**
  * Contrato do evento publicado pelo appointment-service.
- * O formato precisa ser IDÊNTICO ao publicado lá (mesmos nomes de campo),
- * já que a (de)serialização é feita via JSON pelo JacksonJsonMessageConverter.
+ * Formato documentado em docs/messaging/appointment-event.md.
+ * 
+ * patientName e doctorName são opcionais; o restante é obrigatório.
  */
-@Data
-@NoArgsConstructor
-public class AppointmentEvent {
-
-    private Long appointmentId;
-
-    private Long patientId;
-
-    private Long doctorId;
-
-    private LocalDateTime dateTime;
-
-    private String description;
-
-    private EventType eventType;
+public record AppointmentEvent(
+        @NotNull UUID eventId,
+        @NotNull AppointmentEventStatus eventStatus,
+        @NotNull Instant occurredAt,
+        @NotNull Long appointmentId,
+        @NotNull Long patientId,
+        String patientName,
+        @NotNull Long doctorId,
+        String doctorName,
+        @NotNull LocalDateTime appointmentDate,
+        String description
+) {
 }

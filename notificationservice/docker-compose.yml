@@ -1,56 +1,61 @@
+name: grupo65
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
 services:
-  postgres:
+  notification-postgres:
     image: postgres:16-alpine
-    container_name: ${COMPOSE_PROJECT_NAME}-postgres
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - notification-postgres-data:/var/lib/postgresql/data
     networks:
-      - app-network
-    restart:
-      on-failure
+      - notification-net
+    restart: on-failure
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
-      retries: 5
-
-  # ATENCAO: isto sobe um RabbitMQ só para VOCÊ testar isoladamente.
-  # Quando for integrar com o time (appointment-service publicando de
-  # verdade), aponte RABBITMQ_HOST para o RabbitMQ compartilhado do grupo
-  # e remova/pare este serviço para não rodar dois brokers em paralelo.
-  rabbitmq:
-    image: rabbitmq:4-management-alpine
-    container_name: ${COMPOSE_PROJECT_NAME}-rabbitmq
-    environment:
-      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER}
-      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD}
-      - RABBITMQ_DEFAULT_VHOST=${RABBITMQ_VHOST}
-    ports:
-      - "${RABBITMQ_PORT}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
-    volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
-    networks:
-      - app-network
-    restart:
-      on-failure
-    healthcheck:
-      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms" ]
-      interval: 10s
-      timeout: 10s
       retries: 10
-      start_period: 20s
+
+  notification-app:
+    build: .
+    profiles: [apps]
+    env_file:
+      - .env
+      - ../infra/.env
+    environment:
+      DB_HOST: notification-postgres
+      DB_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    networks:
+      - notification-net
+      - shared
+    restart: on-failure
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
 
 networks:
-  app-network:
+  notification-net:
     driver: bridge
 
 volumes:
-  postgres-data:
-  rabbitmq-data:
+  notification-postgres-data:
