@@ -95,6 +95,11 @@ declarada pelo seu consumidor (history-service e notification-service). Se você
 descartada em silêncio pelo RabbitMQ — espere todos os serviços ficarem saudáveis
 (`make ps`) antes de testar.
 
+**Segurança:** o appointment-service, o history-service e o notification-service ainda não
+exigem autenticação nesta branch. Na integração do auth-service, o notification-service deve
+receber o mesmo `SecurityConfig` de resource server JWT usado nos outros dois: health público e
+demais rotas autenticadas.
+
 ### Portas
 
 | Serviço | App | Postgres | Banco |
@@ -119,6 +124,7 @@ RabbitMQ: 5672 (AMQP) e 15672 (Management).
 | agendamento criado, mas nada chega ao histórico nem às notificações, sem erro nos logs | `.env` de antes da troca para a exchange única `appointment.exchange` | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
 | `PRECONDITION_FAILED - inequivalent arg 'x-dead-letter-exchange'` nos logs de um consumidor | fila criada por uma versão anterior, ainda gravada no volume do RabbitMQ | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
 | alterações de código não aparecem depois de `git pull` | `make up` reaproveita as imagens já construídas | `make build` |
+| notification-app não sobe e o log mostra `relation "notifications" already exists` | tabela criada pelo Hibernate numa versão anterior, antes da migration Flyway | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
 
 ### Atualizando de uma versão anterior
 
@@ -127,17 +133,28 @@ restos que impedem a comunicação, mesmo depois de atualizar a branch:
 
 1. **`.env` antigos.** O `make setup` não sobrescreve arquivos existentes. Um
    `history-service/.env` antigo, com `RABBITMQ_EXCHANGE=history.exchange`, faz o history
-   escutar uma exchange que ninguém mais usa; um `notificationservice/.env` antigo ocupa a
+   escutar uma exchange que ninguém mais usa; um `.env` antigo do notification ocupa a
    porta 5433, que é do appointment.
 2. **Imagens antigas.** O `make up` não recompila o código, só reaproveita as imagens.
 3. **Filas antigas no volume do RabbitMQ.** A `history.queue` criada pela versão anterior tem
    outra configuração de dead letter, e o broker recusa a nova com `PRECONDITION_FAILED`.
+4. **Tabela antiga do notification.** Versões anteriores deixavam o Hibernate criar a tabela
+   `notifications`; agora ela vem de uma migration Flyway, que falha se a tabela já existir.
+   Os dados são notificações de desenvolvimento, então o volume do banco do notification é
+   recriado.
+5. **Pasta antiga.** O serviço foi renomeado de `notificationservice` para
+   `notification-service`; depois do `git pull`, a pasta antiga sobra só com arquivos ignorados
+   (`.env`, `target/`).
 
 Com o ambiente de pé, nesta ordem:
 
 ```bash
 rm -f appointment-service/.env history-service/.env notification-service/.env
+git ls-files notificationservice    # deve sair vazio: a pasta antiga só tem arquivos ignorados
+rm -rf notificationservice
 make setup
+docker compose rm -sf notification-app notification-postgres
+docker volume rm grupo65_notification-postgres-data
 make build                   # recompila e recria as aplicações com os .env novos
 docker compose exec rabbitmq rabbitmqctl delete_queue history.queue
 docker compose exec rabbitmq rabbitmqctl delete_queue history.queue.dlq

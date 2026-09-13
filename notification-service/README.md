@@ -67,6 +67,23 @@ enviada ao paciente. Um campo fora do contrato faz a mensagem ir para a `notific
 | Routing key | `notification.created` | `RABBITMQ_ROUTING_KEY` |
 | Dead letter | `appointment.exchange.dlx` → `notification.queue.dlq` | derivada |
 
+## Processamento e idempotência
+
+1. **Validação.** O evento é validado contra o contrato (`@NotNull` no `AppointmentEvent`). Um
+   evento inválido — por exemplo, sem `appointmentDate` — é rejeitado e vai para a
+   `notification.queue.dlq`, sem gravar nada.
+2. **Idempotência pelo `eventId`.** Cada evento gera no máximo uma notificação. Se o mesmo
+   `eventId` chegar de novo (reentrega do RabbitMQ):
+   - notificação já `SENT`: é devolvida sem reenviar;
+   - notificação `PENDING`, de um envio que falhou: o envio é tentado de novo sobre a mesma linha.
+   A garantia final é a constraint `uk_notifications_event_id UNIQUE (event_id)` no banco, que
+   barra dois consumidores gravando o mesmo evento ao mesmo tempo.
+3. **Envio.** A notificação nasce `PENDING`, é enviada por log (`LEMBRETE ENVIADO`) e fica `SENT`.
+   Se o envio falhar, continua `PENDING` e a mensagem vai para a DLQ.
+
+O schema é criado pela migration Flyway `V1__create_notifications.sql`; o Hibernate só valida
+(`ddl-auto=validate`).
+
 ## Rodando junto com os outros serviços
 
 Da raiz do monorepo — é o caminho normal:
@@ -132,12 +149,22 @@ Deve retornar a notificação com `status: SENT`.
 ./mvnw test
 ```
 
-Requer Docker: o teste que sobe o contexto usa Testcontainers.
+Requer Docker: os testes de integração usam Testcontainers.
 
-- `NotificationApplicationTests` — sobe o contexto Spring com Postgres e RabbitMQ em containers.
-- `NotificationServiceTest` — testes unitários (Mockito): notificação criada como `PENDING` e
-  marcada como `SENT` após o envio, mensagem para cada `eventStatus`, erro no envio mantendo
-  `PENDING`, e busca por paciente.
+| Teste | O que prova |
+|---|---|
+| `NotificationMessageListenerIT` | evento publicado na exchange vira notificação `SENT`; o mesmo evento duas vezes gera uma única linha; payload fora do contrato vai para a DLQ sem gravar nada |
+| `NotificationServiceTest` | mensagem para cada `eventStatus`, `PENDING` → `SENT`, falha no envio, evento nulo e inválido rejeitados, reentrega ignorada, `PENDING` reenviado na mesma linha, colisão entre consumidores |
+| `NotificationServicePersistenceTest` | colisão de `event_id` contra o Postgres real resulta em uma única linha |
+| `NotificationSchemaTest` | a migration cria todas as colunas e a constraint única |
+| `NotificationControllerTest` | `GET /notifications/patient/{patientId}` |
+| `NotificationApplicationTests` | o contexto sobe com Postgres e RabbitMQ em containers |
+
+## Segurança
+
+Este serviço ainda não exige autenticação. Na integração do auth-service, deve receber o mesmo
+`SecurityConfig` de resource server JWT usado no appointment-service e no history-service: health
+público e demais rotas autenticadas.
 
 ## Problemas comuns
 
@@ -147,3 +174,4 @@ Requer Docker: o teste que sobe o contexto usa Testcontainers.
 | `address already in use` na 5434 ou na 8082 | outro processo usando a porta | parar o processo, ou mudar `DB_PORT`/`SERVER_PORT` no `.env` |
 | agendamento criado, mas nenhuma notificação | `.env` apontando para outra exchange, ou o serviço subiu depois da publicação | conferir `RABBITMQ_EXCHANGE=appointment.exchange` e ver [Atualizando de uma versão anterior](../README.md#atualizando-de-uma-versão-anterior) |
 | mensagem na `notification.queue.dlq` | payload fora do contrato | comparar com o formato acima |
+| serviço não sobe e o log mostra `relation "notifications" already exists` | tabela criada pelo Hibernate numa versão anterior | ver [Atualizando de uma versão anterior](../README.md#atualizando-de-uma-versão-anterior) |
