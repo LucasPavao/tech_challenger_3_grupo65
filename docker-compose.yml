@@ -6,3 +6,5 @@ include:
     env_file: ./history-service/.env
   - path: ./appointment-service/docker-compose.yml
     env_file: ./appointment-service/.env
+  - path: ./notificationservice/docker-compose.yml
+    env_file: ./notificationservice/.env

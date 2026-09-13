@@ -2,12 +2,10 @@ package br.com.tech.challenge.appointmentservice.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties(prefix = "app.messaging")
+@ConfigurationProperties(prefix = "app.rabbitmq")
 public record MessagingProperties(
-        String historyExchange,
+        String appointmentExchange,
         String historyRoutingKey,
-        String notificationExchange,
-        String notificationRoutingKey,
-        boolean publishNotification
+        String notificationRoutingKey
 ) {
 }

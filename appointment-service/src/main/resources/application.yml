@@ -26,17 +26,19 @@ spring:
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
     virtual-host: ${RABBITMQ_VHOST:/}
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
 
 server:
   port: ${SERVER_PORT:8080}
 
 app:
-  messaging:
-    history-exchange: ${HISTORY_EXCHANGE:history.exchange}
-    history-routing-key: ${HISTORY_ROUTING_KEY:history.created}
-    notification-exchange: ${NOTIFICATION_EXCHANGE:notification.exchange}
-    notification-routing-key: ${NOTIFICATION_ROUTING_KEY:notification.created}
-    publish-notification: ${PUBLISH_NOTIFICATION:false}
+  rabbitmq:
+    appointment-exchange: ${RABBITMQ_EXCHANGE:appointment.exchange}
+    history-routing-key: ${RABBITMQ_HISTORY_ROUTING_KEY:history.created}
+    notification-routing-key: ${RABBITMQ_NOTIFICATION_ROUTING_KEY:notification.created}
 
 management:
   endpoints:

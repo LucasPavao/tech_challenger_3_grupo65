@@ -1,4 +1,4 @@
-package br.com.tech.challenge.historyservice.config;
+package br.com.tech.challenge.notificationservice.config;
 
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
@@ -13,17 +13,17 @@ import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Topologia RabbitMQ para o history-service.
+ * Topologia RabbitMQ para o notification-service.
  *
- * O history-service consome eventos do appointment-service através de um TopicExchange.
- * Cada evento contém informações sobre mudanças nas consultas, que são gravadas no histórico
- * médico de forma append-only.
+ * O notification-service consome eventos do appointment-service através de um TopicExchange.
+ * Cada evento contém informações sobre mudanças nas consultas, que são processadas para
+ * envio de notificações/lembretes aos pacientes.
  *
  * Topologia:
  * - Exchange: appointment.exchange (TopicExchange)
- * - Queue: history.queue
- * - Routing Key: history.created (binding para cada evento de histórico)
- * - DLQ: history.queue.dlq (Dead Letter Queue para reprocessamento)
+ * - Queue: notification.queue
+ * - Routing Key: notification.created (binding para cada evento de notificação)
+ * - DLQ: notification.queue.dlq (Dead Letter Queue para reprocessamento)
  */
 @Configuration
 public class RabbitMQConfig {
@@ -43,7 +43,7 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public Queue historyQueue() {
+    public Queue notificationQueue() {
         return QueueBuilder.durable(queueName)
                 .deadLetterExchange(exchangeName + ".dlx")
                 .deadLetterRoutingKey(routingKey + ".dlq")
@@ -51,8 +51,8 @@ public class RabbitMQConfig {
     }
 
     @Bean
-    public Binding historyBinding(Queue historyQueue, TopicExchange appointmentExchange) {
-        return BindingBuilder.bind(historyQueue)
+    public Binding notificationBinding(Queue notificationQueue, TopicExchange appointmentExchange) {
+        return BindingBuilder.bind(notificationQueue)
                 .to(appointmentExchange)
                 .with(routingKey);
     }
