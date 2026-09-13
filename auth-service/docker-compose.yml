@@ -1,15 +1,20 @@
+name: grupo65
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
 services:
-  auth-service-postgres:
+  auth-postgres:
     image: postgres:16-alpine
-    container_name: security-postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-mydatabase}
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${DB_PORT}:5432"
     volumes:
-      - auth-service-data:/var/lib/postgresql/data
+      - auth-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mydatabase}"]
       interval: 5s
@@ -17,4 +22,4 @@ services:
       retries: 10
 
 volumes:
-  auth-service-data:
+  auth-postgres-data:
