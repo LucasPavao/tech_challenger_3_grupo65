@@ -83,6 +83,18 @@ class NotificationServiceTest {
     }
 
     @Test
+    void deveGravarEventIdEEventStatusNaNotificacao() {
+        when(notificationRepository.save(any(Notification.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        AppointmentEvent evento = evento(AppointmentEventStatus.RESCHEDULED);
+
+        Notification result = notificationService.processAppointmentEvent(evento);
+
+        assertThat(result.getEventId()).isEqualTo(evento.eventId());
+        assertThat(result.getEventStatus()).isEqualTo(AppointmentEventStatus.RESCHEDULED);
+    }
+
+    @Test
     void deveManterNotificacaoPendingEPropagarErroQuandoOEnvioFalha() {
         when(notificationRepository.save(any(Notification.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

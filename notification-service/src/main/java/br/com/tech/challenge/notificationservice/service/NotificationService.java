@@ -59,6 +59,8 @@ public class NotificationService {
     private Notification createNotification(AppointmentEvent event) {
         Notification notification = new Notification();
 
+        notification.setEventId(event.eventId());
+        notification.setEventStatus(event.eventStatus());
         notification.setAppointmentId(event.appointmentId());
         notification.setPatientId(event.patientId());
         notification.setMessage(createMessage(event));
