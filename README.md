@@ -77,7 +77,7 @@ O design completo está em
 | `make up` | sobe tudo: bancos, RabbitMQ e aplicações |
 | `make build` | idem, reconstruindo as imagens |
 | `make infra` | sobe só os bancos e o RabbitMQ, para rodar as apps pela IDE |
-| `make smoke` | teste ponta a ponta appointment → RabbitMQ → history |
+| `make smoke` | teste ponta a ponta appointment → RabbitMQ → history e notification |
 | `make logs` / `make ps` | logs e estado dos containers |
 | `make down` / `make clean` | derruba tudo (`clean` também apaga os volumes) |
 
@@ -260,7 +260,7 @@ com `status` `SENT`.
 make smoke
 ```
 
-Faz exatamente os passos 1 a 3 e falha com diagnóstico se a integração estiver quebrada.
+Faz os passos 1, 2, 3 e 5 e falha com diagnóstico se a integração estiver quebrada.
 Rode antes de investigar qualquer coisa à mão — ele separa "o ambiente está ruim" de "a
 requisição está errada".
 
