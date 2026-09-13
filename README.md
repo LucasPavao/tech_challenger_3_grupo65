@@ -97,8 +97,8 @@ descartada em silêncio pelo RabbitMQ — espere todos os serviços ficarem saud
 
 **Segurança:** o appointment-service, o history-service e o notification-service ainda não
 exigem autenticação nesta branch. Na integração do auth-service, o notification-service deve
-receber o mesmo `SecurityConfig` de resource server JWT usado nos outros dois: health público e
-demais rotas autenticadas.
+receber o mesmo `SecurityConfig` de resource server JWT que a branch do auth-service adiciona aos
+outros dois: health público e demais rotas autenticadas.
 
 ### Portas
 
@@ -164,7 +164,9 @@ make smoke
 
 A ordem importa: se as filas forem apagadas antes de as aplicações serem recriadas, a versão
 antiga, ainda rodando, as recria com a configuração velha. Para começar do zero — perdendo os
-dados dos bancos —, `make clean && make build` resolve tudo de uma vez.
+dados dos bancos —, `make clean && make build` substitui os passos de `docker compose rm`,
+`docker volume rm` e `delete_queue`; apagar os `.env` antigos e a pasta `notificationservice`
+continua necessário.
 
 ## Fluxo de teste
 

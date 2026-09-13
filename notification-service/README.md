@@ -77,7 +77,9 @@ enviada ao paciente. Um campo fora do contrato faz a mensagem ir para a `notific
    - notificação já `SENT`: é devolvida sem reenviar;
    - notificação `PENDING`, de um envio que falhou: o envio é tentado de novo sobre a mesma linha.
    A garantia final é a constraint `uk_notifications_event_id UNIQUE (event_id)` no banco, que
-   barra dois consumidores gravando o mesmo evento ao mesmo tempo.
+   barra dois consumidores gravando o mesmo evento ao mesmo tempo. A garantia é de uma linha por
+   evento; o envio é *pelo menos uma vez*: um reprocessamento depois de uma falha ao gravar `SENT`
+   envia de novo.
 3. **Envio.** A notificação nasce `PENDING`, é enviada por log (`LEMBRETE ENVIADO`) e fica `SENT`.
    Se o envio falhar, continua `PENDING` e a mensagem vai para a DLQ.
 
@@ -163,8 +165,8 @@ Requer Docker: os testes de integração usam Testcontainers.
 ## Segurança
 
 Este serviço ainda não exige autenticação. Na integração do auth-service, deve receber o mesmo
-`SecurityConfig` de resource server JWT usado no appointment-service e no history-service: health
-público e demais rotas autenticadas.
+`SecurityConfig` de resource server JWT que a branch do auth-service adiciona ao appointment-service
+e ao history-service: health público e demais rotas autenticadas.
 
 ## Problemas comuns
 
