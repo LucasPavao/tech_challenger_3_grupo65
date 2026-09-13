@@ -5,7 +5,7 @@ include:
     env_file: ../infra/.env
 
 services:
-  history-postgres:
+  appointment-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
@@ -14,9 +14,9 @@ services:
     ports:
       - "${DB_PORT}:5432"
     volumes:
-      - history-postgres-data:/var/lib/postgresql/data
+      - appointment-postgres-data:/var/lib/postgresql/data
     networks:
-      - history-net
+      - appointment-net
     restart: on-failure
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
@@ -24,25 +24,25 @@ services:
       timeout: 5s
       retries: 10
 
-  history-app:
+  appointment-app:
     build: .
     profiles: [apps]
     env_file:
       - .env
       - ../infra/.env
     environment:
-      DB_HOST: history-postgres
+      DB_HOST: appointment-postgres
       DB_PORT: 5432
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
-      - history-net
+      - appointment-net
       - shared
     restart: on-failure
     depends_on:
-      history-postgres:
+      appointment-postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
@@ -54,8 +54,8 @@ services:
       start_period: 40s
 
 networks:
-  history-net:
+  appointment-net:
     driver: bridge
 
 volumes:
-  history-postgres-data:
+  appointment-postgres-data:

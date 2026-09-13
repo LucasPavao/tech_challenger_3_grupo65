@@ -12,21 +12,33 @@ visível na primeira.
 Requisitos: Docker, JDK 21. Maven vem no wrapper.
 
 ```bash
-cp .env.example .env          # valores padrão já servem para desenvolvimento
-docker compose up -d          # Postgres + RabbitMQ
-set -a; source .env; set +a
+cp .env.example .env                      # .env deste serviço
+cp ../infra/.env.example ../infra/.env    # .env do RabbitMQ compartilhado — sem ele o compose falha
+COMPOSE_PROFILES= docker compose up -d    # só Postgres + RabbitMQ, sem o container da app
 ./mvnw spring-boot:run
 ```
+
+Os dois `cp` sobrescrevem arquivos que já existam. Para criar só os que faltam, rode `make setup` na raiz do monorepo.
+
+Não rode `docker compose up -d` sem `COMPOSE_PROFILES=`: o `.env` já traz
+`COMPOSE_PROFILES=apps`, então o comando também sobe o container `history-app`, que
+ocupa a 8081 — e o `./mvnw spring-boot:run` seguinte morre com `Port already in use`.
+(Alternativa, de dentro da raiz do monorepo: `make infra`.)
+
+**Cuidado:** como todos os serviços compartilham o mesmo projeto Compose (`name:
+grupo65`), `docker compose down` de dentro desta pasta derruba o projeto **inteiro**,
+não só o history-service. Para parar apenas este serviço, use
+`docker compose stop history-app history-postgres`.
 
 Pronto quando aparecer `Started HistoryApplication`. A aplicação cria sozinha a topologia do
 RabbitMQ (exchange, fila, binding e DLQ) e o Flyway cria a tabela.
 
 | Endereço | O quê |
 |---|---|
-| <http://localhost:8080/graphql> | endpoint GraphQL |
-| <http://localhost:8080/graphiql> | IDE web para explorar o schema |
+| <http://localhost:8081/graphql> | endpoint GraphQL |
+| <http://localhost:8081/graphiql> | IDE web para explorar o schema |
 | <http://localhost:15672> | console do RabbitMQ (`guest` / `guest`) |
-| <http://localhost:8080/actuator/health> | `db` e `rabbit` devem estar `UP` |
+| <http://localhost:8081/actuator/health> | `db` e `rabbit` devem estar `UP` |
 
 ## Testar o serviço
 
@@ -59,7 +71,7 @@ mensagem está em [`docs/messaging/appointment-event.md`](docs/messaging/appoint
 **Estado atual de cada consulta do paciente** — uma entrada por consulta:
 
 ```bash
-curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
   -d '{"query":"{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -73,7 +85,7 @@ curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json
 **Trilha completa de uma consulta** — todo o histórico, com a data original preservada:
 
 ```bash
-curl -s -X POST http://localhost:8080/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
   -d '{"query":"{ appointmentTimeline(appointmentId: 42) { eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -94,7 +106,7 @@ Campos disponíveis e formatos em [`docs/graphql/queries.md`](docs/graphql/queri
 ### 3. Conferir o que foi gravado
 
 ```bash
-docker exec historyservice-postgres psql -U postgres -d mydatabase \
+docker exec grupo65-history-postgres-1 psql -U postgres -d history_db \
   -c "SELECT appointment_id, event_status, appointment_date, occurred_at FROM medical_history ORDER BY occurred_at;"
 
 curl -s -u guest:guest 'http://localhost:15672/api/queues/%2F?columns=name,messages' | python3 -m json.tool
@@ -135,7 +147,7 @@ npx newman run docs/postman/history-service.postman_collection.json --delay-requ
 Para repetir do zero, limpe a tabela antes — senão a pasta 1 acrescenta linhas à trilha:
 
 ```bash
-docker exec historyservice-postgres psql -U postgres -d mydatabase -c 'TRUNCATE medical_history;'
+docker exec grupo65-history-postgres-1 psql -U postgres -d history_db -c 'TRUNCATE medical_history;'
 ```
 
 ## Rodar os testes automatizados
@@ -174,8 +186,8 @@ docker compose down -v    # zera banco e fila
 | Sintoma | Causa provável | Solução |
 |---|---|---|
 | `Connection refused` na 5432 ou 5672 | containers ainda subindo | `docker compose ps` e aguardar `(healthy)` |
-| `port is already allocated` | porta ocupada por outro serviço | mudar `DB_PORT` / `RABBITMQ_PORT` no `.env` |
-| `Port 8080 was already in use` | outra aplicação na 8080 | `SERVER_PORT=8081` no `.env` |
+| `port is already allocated` | porta ocupada por outro serviço | mudar `DB_PORT` no `.env` deste serviço (a porta do RabbitMQ é `RABBITMQ_PORT` em `infra/.env`) |
+| `Port 8081 was already in use` | o container `history-app` já está rodando (subiu com `docker compose up -d` sem `COMPOSE_PROFILES=`) e você está tentando rodar `./mvnw spring-boot:run` por cima | `docker compose stop history-app` antes de rodar pela IDE/`mvnw` |
 | Fila com `0 consumers` | aplicação não conectou | conferir o log de inicialização e as credenciais AMQP |
 | Publiquei mas nada em `medical_history` | payload fora do contrato, ou `content_type` ausente | ver a `history.queue.dlq` e o log; comparar com o contrato |
 | `variable is not set` no `docker compose up` | falta o `.env` | `cp .env.example .env` |
@@ -186,12 +198,23 @@ Todas as propriedades têm padrão igual ao `.env.example`, então a aplicação
 nada. Para mudar portas, credenciais ou os nomes da topologia do RabbitMQ, edite o `.env` — ele é
 lido tanto pelo Docker Compose quanto pela aplicação, e **não deve ser versionado**.
 
+Variáveis deste serviço (`history-service/.env`):
+
 | Variável | Padrão |
 |---|---|
-| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `mydatabase` / `postgres` / `postgres` |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `history_db` / `postgres` / `postgres` |
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` |
-| `RABBITMQ_HOST` / `RABBITMQ_PORT` / `RABBITMQ_MANAGEMENT_PORT` | `localhost` / `5672` / `15672` |
-| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` | `guest` / `guest` / `/` |
 | `RABBITMQ_EXCHANGE` / `RABBITMQ_QUEUE` / `RABBITMQ_ROUTING_KEY` | `history.exchange` / `history.queue` / `history.created` |
-| `SERVER_PORT` | `8080` |
+| `SERVER_PORT` | `8081` |
 | `GRAPHIQL_ENABLED` | `true` |
+
+Variáveis do broker compartilhado, em `infra/.env` (não neste `.env`):
+
+| Variável | Padrão |
+|---|---|
+| `RABBITMQ_PORT` / `RABBITMQ_MANAGEMENT_PORT` | `5672` / `15672` |
+| `RABBITMQ_USER` / `RABBITMQ_PASSWORD` / `RABBITMQ_VHOST` | `guest` / `guest` / `/` |
+
+`RABBITMQ_HOST` não está em nenhum `.env`: o padrão é `localhost` (para rodar a app pela
+IDE/`mvnw` contra a infra publicada), e o Compose sobrescreve para `rabbitmq` via
+`environment:` quando quem sobe é o container `history-app`.
