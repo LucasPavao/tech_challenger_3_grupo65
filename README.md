@@ -48,7 +48,7 @@ cp .env.example .env
 cp infra/.env.example infra/.env
 cp history-service/.env.example history-service/.env
 cp appointment-service/.env.example appointment-service/.env
-cp notificationservice/.env.example notificationservice/.env
+cp notification-service/.env.example notification-service/.env
 docker compose up -d --build
 ```
 
@@ -101,7 +101,7 @@ descartada em silêncio pelo RabbitMQ — espere todos os serviços ficarem saud
 |---|---|---|---|
 | appointment-service | 8080 | 5433 | `appointment_db` |
 | history-service | 8081 | 5432 | `history_db` |
-| notificationservice | 8082 | 5434 | `notification_db` |
+| notification-service | 8082 | 5434 | `notification_db` |
 
 RabbitMQ: 5672 (AMQP) e 15672 (Management).
 
@@ -136,7 +136,7 @@ restos que impedem a comunicação, mesmo depois de atualizar a branch:
 Com o ambiente de pé, nesta ordem:
 
 ```bash
-rm -f appointment-service/.env history-service/.env notificationservice/.env
+rm -f appointment-service/.env history-service/.env notification-service/.env
 make setup
 make build                   # recompila e recria as aplicações com os .env novos
 docker compose exec rabbitmq rabbitmqctl delete_queue history.queue
