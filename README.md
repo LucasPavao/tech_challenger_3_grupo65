@@ -7,7 +7,7 @@ Backend API desenvolvida para o Tech Challenger FIAP - Fase 3 - Grupo 65.
 |---|---|---|
 | Docker com Compose v2 | Compose **2.20 ou superior** (testado na 2.40.2) | subir o projeto. Confira com `docker compose version` — o antigo `docker-compose`, com hífen, é a v1 e **não** funciona |
 | `make` | qualquer | atalhos de setup. Já vem no Linux e no macOS (Xcode Command Line Tools) |
-| JDK 21 | 21 | só para rodar os testes ou as aplicações fora do Docker |
+| JDK 21 ou 25 | 21 para appointment/history; 25 para auth-service | só para rodar os testes ou as aplicações fora do Docker |
 
 As portas **8080, 8081, 8082, 5432, 5433, 5434, 5672 e 15672** precisam estar livres. Um PostgreSQL
 instalado localmente costuma ocupar a 5432.
@@ -24,9 +24,37 @@ checkout feito no Windows pode ter convertido os scripts para CRLF, e aí o buil
 git clone https://github.com/LucasPavao/tech_challenger_3_grupo65
 cd tech_challenger_3_grupo65
 make setup   # cria os .env a partir dos .env.example
+./scripts/generate-jwt-keys.sh  # Linux/macOS/WSL; no Windows, use o script PowerShell abaixo
 make up      # constrói as imagens e sobe tudo
 make ps      # espere os sete containers ficarem healthy
 ```
+
+No Windows PowerShell, gere as chaves com:
+
+```powershell
+.\scripts\generate-jwt-keys.ps1
+```
+
+Esse passo deve ser executado antes de `make up` ou `docker compose up --build`. O script cria o
+par RSA usado pelo `auth-service` e copia somente a chave pública para `appointment-service` e
+`history-service`. A chave privada fica apenas no `auth-service` e não deve ser commitada.
+
+O Compose sobe o banco do `auth-service`, mas a aplicação de autenticação é executada localmente.
+Depois de `make up`, abra outro terminal e execute:
+
+```bash
+cd auth-service
+./mvnw spring-boot:run
+```
+
+No Windows PowerShell:
+
+```powershell
+Set-Location auth-service
+.\mvnw.cmd spring-boot:run
+```
+
+O `auth-service` ficará disponível em `http://localhost:8083`.
 
 A **primeira** execução de `make up` demora alguns minutos: ela baixa as imagens base e todas
 as dependências Maven dos dois serviços. As seguintes reaproveitam o cache e sobem em

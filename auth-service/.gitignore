@@ -4,6 +4,9 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 
+**/src/main/resources/app.key
+**/src/main/resources/app.sub
+
 ### STS ###
 .apt_generated
 .classpath
@@ -28,12 +31,3 @@ target/
 build/
 !**/src/main/**/build/
 !**/src/test/**/build/
-
-### VS Code ###
-.vscode/
-
-.env
-.claude
-
-src/main/resources/app.key
-src/main/resources/app.sub

@@ -148,4 +148,11 @@ Os testes unitários da camada de serviço cobrem criação, consulta, atualiza�
 
 ## Integração com Security
 
-A autorização por `@PreAuthorize` deve ser adicionada na etapa de integração com o serviço de Security da Pessoa 1, após o grupo padronizar o JWT e as roles.
+Os endpoints de consulta exigem um JWT emitido pelo `auth-service` no header
+`Authorization: Bearer <token>`. As roles são lidas do claim `scope` no formato
+`ROLE_DOCTOR`, `ROLE_NURSE` ou `ROLE_PATIENT`.
+
+- Enfermeiros podem criar, consultar e editar consultas.
+- Médicos podem consultar e editar consultas.
+- Pacientes podem consultar apenas consultas associadas ao `user_id` presente no próprio token.
+- O health check continua público.

@@ -1,0 +1,57 @@
+name: grupo65
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
+services:
+  auth-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - auth-postgres-data:/var/lib/postgresql/data
+    networks:
+      - auth-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mydatabase}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  auth-app:
+    build: .
+    profiles: [ apps ]
+    env_file:
+      - .env
+      - ../infra/.env
+    environment:
+      DB_HOST: auth-postgres
+      DB_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    networks:
+      - auth-net
+      - shared
+    restart: on-failure
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+networks:
+  auth-net:
+    driver: bridge
+
+volumes:
+  auth-postgres-data:
