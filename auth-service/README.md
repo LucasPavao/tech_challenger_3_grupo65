@@ -51,7 +51,7 @@ Valores padrão do `.env`:
 | `POSTGRES_PASSWORD` | `postgres` | Senha do banco |
 | `DB_HOST` | `localhost` | Host usado ao executar a aplicação localmente |
 | `DB_PORT` | `5434` | Porta publicada do PostgreSQL |
-| `SERVER_PORT` | `8082` | Porta HTTP da aplicação |
+| `SERVER_PORT` | `8083` | Porta HTTP da aplicação |
 
 O arquivo `.env` não deve ser versionado.
 
@@ -65,6 +65,48 @@ O serviço utiliza:
 A chave privada nunca deve ser publicada no GitHub ou incluída em uma imagem pública. Em produção, injete-a como secret e substitua a configuração baseada em arquivo de classpath por uma configuração segura.
 
 Os serviços consumidores precisam possuir a chave pública correspondente. A chave pública pode ser distribuída aos serviços, mas a chave privada deve permanecer exclusivamente no `auth-service`.
+
+### Primeira execução
+
+Antes de subir o ambiente pela primeira vez, gere o par de chaves e distribua a chave pública:
+
+Na raiz do projeto, em Linux/macOS/WSL:
+
+```bash
+bash scripts/generate-jwt-keys.sh
+```
+
+No Windows PowerShell:
+
+```powershell
+.\scripts\generate-jwt-keys.ps1
+```
+
+O script gera `auth-service/src/main/resources/app.key` e `app.sub`, e copia a mesma chave pública para `appointment-service` e `history-service`. Ele não substitui uma chave privada existente. Se existir apenas metade do par, o script interrompe a execução para evitar um par inconsistente.
+
+Depois da geração, suba a infraestrutura e os demais serviços. O Compose do `auth-service` fornece o PostgreSQL; a aplicação de autenticação é executada localmente pelo Maven Wrapper:
+
+```bash
+make up
+```
+
+Em outro terminal, na pasta `auth-service`:
+
+```bash
+./mvnw spring-boot:run
+```
+
+No Windows PowerShell:
+
+```powershell
+.\mvnw.cmd spring-boot:run
+```
+
+Se as chaves forem recriadas e os serviços consumidores estiverem em containers, reconstrua as imagens:
+
+```bash
+docker compose up -d --build
+```
 
 ## Subir somente o banco
 
@@ -98,7 +140,7 @@ Windows PowerShell:
 $env:SPRING_PROFILES_ACTIVE="dev"; ./mvnw.cmd spring-boot:run
 ```
 
-O serviço ficará disponível em `http://localhost:8082`.
+O serviço ficará disponível em `http://localhost:8083`.
 
 O Flyway cria as tabelas e insere as roles automaticamente na primeira execução. Os usuários
 padrão de desenvolvimento (seção abaixo) só são inseridos com o profile `dev` ativo — sem ele,
@@ -125,7 +167,7 @@ Para subir somente a infraestrutura e executar as aplicações pela IDE ou Maven
 make infra
 ```
 
-O `auth-service` utiliza a porta `8082` e o PostgreSQL utiliza a porta `5434`.
+O `auth-service` utiliza a porta `8083` e o PostgreSQL utiliza a porta `5434`.
 
 ## Usuários padrão de desenvolvimento
 
@@ -148,7 +190,7 @@ Essas credenciais são apenas para desenvolvimento e devem ser alteradas ou remo
 O login utiliza HTTP Basic com o e-mail como usuário e a senha como password. Não envie as credenciais em JSON.
 
 ```bash
-curl -i -X POST http://localhost:8082/auth/login \
+curl -i -X POST http://localhost:8083/auth/login \
   -u admin@hospital.com:Admin@123
 ```
 
@@ -191,7 +233,7 @@ O token tem validade de 15 minutos e contém, entre outros, os seguintes claims:
 Exemplo de criação de usuário:
 
 ```bash
-curl -i -X POST http://localhost:8082/users \
+curl -i -X POST http://localhost:8083/users \
   -H "Authorization: Bearer <token-admin>" \
   -H "Content-Type: application/json" \
   -d '{
@@ -234,7 +276,7 @@ O segundo comando apaga os dados locais do `auth-service` e deve ser usado somen
 | Problema | Solução |
 |---|---|
 | `Connection refused` na porta `5434` | Execute `docker compose up -d` e aguarde o PostgreSQL ficar saudável |
-| Porta `8082` ocupada | Altere `SERVER_PORT` no `.env` e use a nova porta |
+| Porta `8083` ocupada | Altere `SERVER_PORT` no `.env` e use a nova porta |
 | Porta `5434` ocupada | Altere `DB_PORT` no `.env` e mantenha a configuração consistente |
 | Erro de `JAVA_HOME` | Instale o JDK 25 e configure `JAVA_HOME` para o diretório correto |
 | Token rejeitado nos outros serviços | Confirme a mesma chave pública, o emissor `auth-service` e o header `Authorization: Bearer ...` |
