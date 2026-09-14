@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Publica um AppointmentEvent na exchange do history-service.
+# Publica um AppointmentEvent na appointment.exchange, a mesma usada pelo appointment-service.
 #
 #   ./scripts/publicar-evento.sh <eventStatus> [appointmentId] [patientId] [appointmentDate] [occurredAt]
 #
@@ -25,7 +25,7 @@ HOST="${RABBITMQ_HOST:-localhost}"
 PORT="${RABBITMQ_MANAGEMENT_PORT:-15672}"
 USER="${RABBITMQ_USER:-guest}"
 PASS="${RABBITMQ_PASSWORD:-guest}"
-EXCHANGE="${RABBITMQ_EXCHANGE:-history.exchange}"
+EXCHANGE="${RABBITMQ_EXCHANGE:-appointment.exchange}"
 ROUTING_KEY="${RABBITMQ_ROUTING_KEY:-history.created}"
 
 # --repetir reusa o ultimo eventId gravado em /tmp, para exercitar a idempotencia.

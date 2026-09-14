@@ -12,6 +12,19 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
 
+/**
+ * Topologia RabbitMQ para o history-service.
+ *
+ * O history-service consome eventos do appointment-service através de um TopicExchange.
+ * Cada evento contém informações sobre mudanças nas consultas, que são gravadas no histórico
+ * médico de forma append-only.
+ *
+ * Topologia:
+ * - Exchange: appointment.exchange (TopicExchange)
+ * - Queue: history.queue
+ * - Routing Key: history.created (binding para cada evento de histórico)
+ * - DLQ: history.queue.dlq (Dead Letter Queue para reprocessamento)
+ */
 @Configuration
 public class RabbitMQConfig {
 
@@ -25,7 +38,7 @@ public class RabbitMQConfig {
     private String routingKey;
 
     @Bean
-    public TopicExchange historyExchange() {
+    public TopicExchange appointmentExchange() {
         return new TopicExchange(exchangeName, true, false);
     }
 
@@ -33,35 +46,37 @@ public class RabbitMQConfig {
     public Queue historyQueue() {
         return QueueBuilder.durable(queueName)
                 .deadLetterExchange(exchangeName + ".dlx")
-                .deadLetterRoutingKey(routingKey)
+                .deadLetterRoutingKey(routingKey + ".dlq")
                 .build();
     }
 
     @Bean
-    public Binding historyBinding() {
-        return BindingBuilder.bind(historyQueue()).to(historyExchange()).with(routingKey);
+    public Binding historyBinding(Queue historyQueue, TopicExchange appointmentExchange) {
+        return BindingBuilder.bind(historyQueue)
+                .to(appointmentExchange)
+                .with(routingKey);
     }
 
     @Bean
-    public TopicExchange historyDeadLetterExchange() {
+    public TopicExchange deadLetterExchange() {
         return new TopicExchange(exchangeName + ".dlx", true, false);
     }
 
     @Bean
-    public Queue historyDeadLetterQueue() {
+    public Queue deadLetterQueue() {
         return QueueBuilder.durable(queueName + ".dlq").build();
     }
 
     @Bean
-    public Binding historyDeadLetterBinding() {
-        return BindingBuilder.bind(historyDeadLetterQueue())
-                .to(historyDeadLetterExchange())
-                .with(routingKey);
+    public Binding deadLetterBinding(Queue deadLetterQueue, TopicExchange deadLetterExchange) {
+        return BindingBuilder.bind(deadLetterQueue)
+                .to(deadLetterExchange)
+                .with(routingKey + ".dlq");
     }
 
     /**
-     * Usa o JsonMapper auto-configurado pelo Spring Boot em vez de um mapper proprio,
-     * para que o listener respeite as propriedades spring.jackson.* -- em especial
+     * Usa o JsonMapper auto-configurado pelo Spring Boot em vez de um mapper próprio,
+     * para que o listener respeite as propriedades spring.jackson.* — em especial
      * deserialization.fail-on-unknown-properties, que manda payload fora do contrato para a DLQ.
      */
     @Bean

@@ -1,0 +1,61 @@
+name: grupo65
+
+include:
+  - path: ../infra/docker-compose.yml
+    env_file: ../infra/.env
+
+services:
+  notification-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${DB_PORT}:5432"
+    volumes:
+      - notification-postgres-data:/var/lib/postgresql/data
+    networks:
+      - notification-net
+    restart: on-failure
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  notification-app:
+    build: .
+    profiles: [apps]
+    env_file:
+      - .env
+      - ../infra/.env
+    environment:
+      DB_HOST: notification-postgres
+      DB_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
+    networks:
+      - notification-net
+      - shared
+    restart: on-failure
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+networks:
+  notification-net:
+    driver: bridge
+
+volumes:
+  notification-postgres-data:

@@ -9,7 +9,7 @@ Backend API desenvolvida para o Tech Challenger FIAP - Fase 3 - Grupo 65.
 | `make` | qualquer | atalhos de setup. Já vem no Linux e no macOS (Xcode Command Line Tools) |
 | JDK 21 | 21 | só para rodar os testes ou as aplicações fora do Docker |
 
-As portas **8080, 8081, 5432, 5433, 5672 e 15672** precisam estar livres. Um PostgreSQL
+As portas **8080, 8081, 8082, 5432, 5433, 5434, 5672 e 15672** precisam estar livres. Um PostgreSQL
 instalado localmente costuma ocupar a 5432.
 
 **No Windows, use o WSL2** e clone o repositório *dentro* do sistema de arquivos do Linux
@@ -25,7 +25,7 @@ git clone https://github.com/LucasPavao/tech_challenger_3_grupo65
 cd tech_challenger_3_grupo65
 make setup   # cria os .env a partir dos .env.example
 make up      # constrói as imagens e sobe tudo
-make ps      # espere os cinco containers ficarem healthy
+make ps      # espere os sete containers ficarem healthy
 ```
 
 A **primeira** execução de `make up` demora alguns minutos: ela baixa as imagens base e todas
@@ -48,6 +48,7 @@ cp .env.example .env
 cp infra/.env.example infra/.env
 cp history-service/.env.example history-service/.env
 cp appointment-service/.env.example appointment-service/.env
+cp notification-service/.env.example notification-service/.env
 docker compose up -d --build
 ```
 
@@ -76,23 +77,28 @@ O design completo está em
 | `make up` | sobe tudo: bancos, RabbitMQ e aplicações |
 | `make build` | idem, reconstruindo as imagens |
 | `make infra` | sobe só os bancos e o RabbitMQ, para rodar as apps pela IDE |
-| `make smoke` | teste ponta a ponta appointment → RabbitMQ → history |
+| `make smoke` | teste ponta a ponta appointment → RabbitMQ → history e notification |
 | `make logs` / `make ps` | logs e estado dos containers |
 | `make down` / `make clean` | derruba tudo (`clean` também apaga os volumes) |
 
 Endpoints: appointment-service (serviço principal) em http://localhost:8080,
-history-service em http://localhost:8081 (GraphiQL em `/graphiql`), RabbitMQ Management em
-http://localhost:15672 (guest/guest).
+history-service em http://localhost:8081 (GraphiQL em `/graphiql`), notification-service em
+http://localhost:8082 e RabbitMQ Management em http://localhost:15672 (guest/guest).
 
 **Cuidado:** como todos os serviços formam um único projeto Compose, `docker compose down`
 de dentro da pasta de um serviço derruba o projeto **inteiro**. Para parar apenas um,
 use `docker compose stop <serviço>-app <serviço>-postgres`.
 
-**Cuidado:** a exchange é declarada pelo publisher (appointment-service) mas a fila é
-declarada pelo consumer (history-service). Se você subir com `make up` e postar um
-agendamento antes de o history-service terminar de subir, a mensagem é descartada em
-silêncio pelo RabbitMQ — espere os dois serviços ficarem saudáveis (`make ps`) antes de
-testar.
+**Cuidado:** a exchange é declarada pelo publisher (appointment-service), mas cada fila é
+declarada pelo seu consumidor (history-service e notification-service). Se você subir com
+`make up` e criar um agendamento antes de os consumidores terminarem de subir, a mensagem é
+descartada em silêncio pelo RabbitMQ — espere todos os serviços ficarem saudáveis
+(`make ps`) antes de testar.
+
+**Segurança:** o appointment-service, o history-service e o notification-service ainda não
+exigem autenticação nesta branch. Na integração do auth-service, o notification-service deve
+receber o mesmo `SecurityConfig` de resource server JWT que a branch do auth-service adiciona aos
+outros dois: health público e demais rotas autenticadas.
 
 ### Portas
 
@@ -100,6 +106,7 @@ testar.
 |---|---|---|---|
 | appointment-service | 8080 | 5433 | `appointment_db` |
 | history-service | 8081 | 5432 | `history_db` |
+| notification-service | 8082 | 5434 | `notification_db` |
 
 RabbitMQ: 5672 (AMQP) e 15672 (Management).
 
@@ -114,25 +121,72 @@ RabbitMQ: 5672 (AMQP) e 15672 (Management).
 | `FATAL: database "mydatabase" does not exist` ao rodar pela IDE | código anterior à correção dos valores padrão de conexão | atualizar a branch |
 | `make: command not found` | Windows fora do WSL2 | usar o WSL2, ou os comandos equivalentes de [Primeiros passos](#primeiros-passos) |
 | erro sobre `include` ao rodar `docker compose` | Compose anterior à 2.20, ou o `docker-compose` v1 | atualizar o Docker e conferir com `docker compose version` |
+| agendamento criado, mas nada chega ao histórico nem às notificações, sem erro nos logs | `.env` de antes da troca para a exchange única `appointment.exchange` | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
+| `PRECONDITION_FAILED - inequivalent arg 'x-dead-letter-exchange'` nos logs de um consumidor | fila criada por uma versão anterior, ainda gravada no volume do RabbitMQ | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
+| alterações de código não aparecem depois de `git pull` | `make up` reaproveita as imagens já construídas | `make build` |
+| notification-app não sobe e o log mostra `relation "notifications" already exists` | tabela criada pelo Hibernate numa versão anterior, antes da migration Flyway | [Atualizando de uma versão anterior](#atualizando-de-uma-versão-anterior) |
+
+### Atualizando de uma versão anterior
+
+Quem já rodou o projeto antes da troca para a exchange única `appointment.exchange` fica com
+restos que impedem a comunicação, mesmo depois de atualizar a branch:
+
+1. **`.env` antigos.** O `make setup` não sobrescreve arquivos existentes. Um
+   `history-service/.env` antigo, com `RABBITMQ_EXCHANGE=history.exchange`, faz o history
+   escutar uma exchange que ninguém mais usa; um `.env` antigo do notification ocupa a
+   porta 5433, que é do appointment.
+2. **Imagens antigas.** O `make up` não recompila o código, só reaproveita as imagens.
+3. **Filas antigas no volume do RabbitMQ.** A `history.queue` criada pela versão anterior tem
+   outra configuração de dead letter, e o broker recusa a nova com `PRECONDITION_FAILED`.
+4. **Tabela antiga do notification.** Versões anteriores deixavam o Hibernate criar a tabela
+   `notifications`; agora ela vem de uma migration Flyway, que falha se a tabela já existir.
+   Os dados são notificações de desenvolvimento, então o volume do banco do notification é
+   recriado.
+5. **Pasta antiga.** O serviço foi renomeado de `notificationservice` para
+   `notification-service`; depois do `git pull`, a pasta antiga sobra só com arquivos ignorados
+   (`.env`, `target/`).
+
+Com o ambiente de pé, nesta ordem:
+
+```bash
+rm -f appointment-service/.env history-service/.env notification-service/.env
+git ls-files notificationservice    # deve sair vazio: a pasta antiga só tem arquivos ignorados
+rm -rf notificationservice
+make setup
+docker compose rm -sf notification-app notification-postgres
+docker volume rm grupo65_notification-postgres-data
+make build                   # recompila e recria as aplicações com os .env novos
+docker compose exec rabbitmq rabbitmqctl delete_queue history.queue
+docker compose exec rabbitmq rabbitmqctl delete_queue history.queue.dlq
+docker compose restart history-app
+make smoke
+```
+
+A ordem importa: se as filas forem apagadas antes de as aplicações serem recriadas, a versão
+antiga, ainda rodando, as recria com a configuração velha. Para começar do zero — perdendo os
+dados dos bancos —, `make clean && make build` substitui os passos de `docker compose rm`,
+`docker volume rm` e `delete_queue`; apagar os `.env` antigos e a pasta `notificationservice`
+continua necessário.
 
 ## Fluxo de teste
 
 A coleção Postman com todas as rotas está em
 [`docs/postman/tech-challenge-grupo65.postman_collection.json`](docs/postman/tech-challenge-grupo65.postman_collection.json).
-Importe esse único arquivo no Postman: ele cobre os dois serviços, separado em pastas.
+Importe esse único arquivo no Postman: ele cobre os três serviços, separado em pastas.
 
 | Pasta | Para quê |
 |---|---|
 | **0. Health** | confirmar que o ambiente está de pé antes de qualquer coisa |
 | **1. Appointment (REST)** | as rotas do serviço principal, uma a uma |
 | **2. History (GraphQL)** | consultas do histórico, incluindo os casos de erro |
+| **3. Notification (REST)** | notificações geradas para um paciente |
 
 ### Passo 0 — subir o ambiente
 
 ```bash
 make setup   # só na primeira vez, cria os .env
 make up
-make ps      # espere os cinco containers ficarem healthy
+make ps      # espere os sete containers ficarem healthy
 ```
 
 Esperar o `healthy` importa: a exchange é declarada pelo appointment-service, mas a fila é
@@ -146,10 +200,11 @@ mensagem em silêncio** — o agendamento é criado, mas nunca aparece no histó
 |---|---|
 | appointment-service | <http://localhost:8080/actuator/health> |
 | history-service | <http://localhost:8081/actuator/health> |
+| notification-service | <http://localhost:8082/actuator/health> |
 | RabbitMQ Management | <http://localhost:15672> (guest / guest) |
 
-Os dois respondem com os componentes detalhados. Confira que `db` **e** `rabbit` estão `UP`
-nos dois — um `rabbit` DOWN significa que a integração não vai funcionar, mesmo com o
+Os três respondem com os componentes detalhados. Confira que `db` **e** `rabbit` estão `UP`
+nos três — um `rabbit` DOWN significa que a integração não vai funcionar, mesmo com o
 serviço respondendo normalmente nas rotas REST.
 
 ### Passo 2 — criar um agendamento
@@ -207,13 +262,24 @@ Devem aparecer **duas linhas**: o `SCHEDULED` da criação e o `COMPLETED` da co
 é o ponto que demonstra a arquitetura — o histórico é append-only, então cada mudança no
 appointment-service vira um registro novo em vez de sobrescrever o anterior.
 
+### Passo 5 — conferir a notificação
+
+O mesmo evento do passo 2 também é entregue ao notification-service, por outra fila:
+
+```bash
+curl -s http://localhost:8082/notifications/patient/777
+```
+
+Deve aparecer uma notificação por evento publicado — a do agendamento e a da conclusão —, todas
+com `status` `SENT`.
+
 ### Atalho: o fluxo inteiro automatizado
 
 ```bash
 make smoke
 ```
 
-Faz exatamente os passos 1 a 3 e falha com diagnóstico se a integração estiver quebrada.
+Faz os passos 1, 2, 3 e 5 e falha com diagnóstico se a integração estiver quebrada.
 Rode antes de investigar qualquer coisa à mão — ele separa "o ambiente está ruim" de "a
 requisição está errada".
 
@@ -230,10 +296,10 @@ requisição está errada".
 
 ## Adicionando um novo serviço
 
-Exemplo com um `notification-service`. São quatro arquivos novos e **uma** edição fora
+Exemplo com um `billing-service`. São quatro arquivos novos e **uma** edição fora
 da pasta do serviço.
 
-### 1. `notification-service/docker-compose.yml`
+### 1. `billing-service/docker-compose.yml`
 
 ```yaml
 name: grupo65                       # convenção: mesmo projeto para todos
@@ -243,36 +309,36 @@ include:
     env_file: ../infra/.env
 
 services:
-  notification-postgres:
+  billing-postgres:
     image: postgres:16-alpine
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports: ["${DB_PORT}:5432"]
-    volumes: [notification-postgres-data:/var/lib/postgresql/data]
-    networks: [notification-net]         # só a rede privada do serviço
+    volumes: [billing-postgres-data:/var/lib/postgresql/data]
+    networks: [billing-net]         # só a rede privada do serviço
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       retries: 10
 
-  notification-app:
+  billing-app:
     build: .
     profiles: [apps]
     env_file:
       - .env
       - ../infra/.env
     environment:
-      DB_HOST: notification-postgres     # sobrescreve o localhost do .env
+      DB_HOST: billing-postgres     # sobrescreve o localhost do .env
       DB_PORT: 5432                      # porta interna, não a publicada
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
     ports: ["${SERVER_PORT}:${SERVER_PORT}"]
-    networks: [notification-net, shared] # rede privada + `shared` para o broker
+    networks: [billing-net, shared] # rede privada + `shared` para o broker
     restart: on-failure
     depends_on:
-      notification-postgres: { condition: service_healthy }
+      billing-postgres: { condition: service_healthy }
       rabbitmq:              { condition: service_healthy }
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:${SERVER_PORT}/actuator/health"]
@@ -282,25 +348,25 @@ services:
       start_period: 40s
 
 networks:
-  notification-net:
+  billing-net:
     driver: bridge
 
 volumes:
-  notification-postgres-data:
+  billing-postgres-data:
 ```
 
-### 2. `notification-service/.env.example`
+### 2. `billing-service/.env.example`
 
-Usa a próxima faixa de portas livre (8080/5433 e 8081/5432 já estão tomadas):
+Usa a próxima faixa de portas livre (8080/5433, 8081/5432 e 8082/5434 já estão tomadas):
 
 ```
 COMPOSE_PROFILES=apps
-POSTGRES_DB=notification_db
+POSTGRES_DB=billing_db
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=postgres
 DB_HOST=localhost
-DB_PORT=5434
-SERVER_PORT=8082
+DB_PORT=5435
+SERVER_PORT=8083
 ```
 
 ### 3. `Dockerfile` e `.dockerignore`
@@ -311,8 +377,8 @@ contexto de build.
 ### 4. Uma entrada no `docker-compose.yml` da raiz
 
 ```yaml
-  - path: ./notification-service/docker-compose.yml
-    env_file: ./notification-service/.env
+  - path: ./billing-service/docker-compose.yml
+    env_file: ./billing-service/.env
 ```
 
 Depois, `make setup && make up`.

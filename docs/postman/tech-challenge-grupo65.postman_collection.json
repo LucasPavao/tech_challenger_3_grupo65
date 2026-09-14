@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Tech Challenge Fase 3 — Grupo 65",
-    "description": "Colecao unica dos dois microsservicos do projeto.\n\n| Servico | URL |\n|---|---|\n| appointment-service (principal) | http://localhost:8080 |\n| history-service | http://localhost:8081 |\n| RabbitMQ Management | http://localhost:15672 (guest/guest) |\n\n**Antes de comecar:** `make up` na raiz do projeto e espere `make ps` mostrar os cinco containers `healthy`. Se voce criar um agendamento antes de o history-service ter subido pela primeira vez, a fila ainda nao existe e a mensagem e descartada em silencio.\n\n**Ordem sugerida:** pasta 0 (Health) para confirmar o ambiente, depois a pasta 1 para criar um agendamento e a pasta 2 para ver o evento chegar no historico.\n\n**patientHistory x appointmentTimeline:** `patientHistory` devolve apenas o ULTIMO evento de cada consulta (estado atual). Para ver a trilha inteira, com o SCHEDULED e o RESCHEDULED lado a lado, use `appointmentTimeline`.",
+    "description": "Colecao unica dos dois microsservicos do projeto.\n\n| Servico | URL |\n|---|---|\n| appointment-service (principal) | http://localhost:8080 |\n| history-service | http://localhost:8081 |\n| notification-service | http://localhost:8082 |\n| RabbitMQ Management | http://localhost:15672 (guest/guest) |\n\n**Antes de comecar:** `make up` na raiz do projeto e espere `make ps` mostrar os cinco containers `healthy`. Se voce criar um agendamento antes de o history-service ter subido pela primeira vez, a fila ainda nao existe e a mensagem e descartada em silencio.\n\n**Ordem sugerida:** pasta 0 (Health) para confirmar o ambiente, depois a pasta 1 para criar um agendamento e a pasta 2 para ver o evento chegar no historico.\n\n**patientHistory x appointmentTimeline:** `patientHistory` devolve apenas o ULTIMO evento de cada consulta (estado atual). Para ver a trilha inteira, com o SCHEDULED e o RESCHEDULED lado a lado, use `appointmentTimeline`.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -13,6 +13,11 @@
     {
       "key": "historyUrl",
       "value": "http://localhost:8081",
+      "type": "string"
+    },
+    {
+      "key": "notificationUrl",
+      "value": "http://localhost:8082",
       "type": "string"
     },
     {
@@ -74,6 +79,32 @@
             "header": [],
             "url": "{{historyUrl}}/actuator/health",
             "description": "Mesma checagem do appointment. O `rabbit` UP aqui indica que o consumidor conectou no broker."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('servico UP', () => pm.expect(b.status).to.eql('UP'));",
+                  "if (b.components) {",
+                  "  pm.test('banco UP', () => pm.expect(b.components.db.status).to.eql('UP'));",
+                  "  pm.test('rabbit UP', () => pm.expect(b.components.rabbit.status).to.eql('UP'));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Health — notification-service (8082)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{notificationUrl}}/actuator/health",
+            "description": "Mesma checagem dos outros. O `rabbit` UP indica que o consumidor conectou no broker."
           },
           "event": [
             {
@@ -629,6 +660,35 @@
                 "exec": [
                   "const b = pm.response.json();",
                   "pm.test('devolve erro', () => pm.expect(b.errors).to.be.an('array').that.is.not.empty);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. Notification (REST)",
+      "description": "Notificações geradas pelo notification-service, em http://localhost:8082. Cada evento publicado pelo appointment-service vira uma notificação.",
+      "item": [
+        {
+          "name": "Notificações do paciente",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{notificationUrl}}/notifications/patient/{{patientId}}",
+            "description": "Depois de criar um agendamento na pasta 1, o evento chega por RabbitMQ e a notificação aparece aqui com status SENT."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('devolve uma lista', () => pm.expect(b).to.be.an('array'));",
+                  "pm.test('notificações enviadas', () => b.forEach(n => pm.expect(n.status).to.eql('SENT')));"
                 ]
               }
             }

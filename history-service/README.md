@@ -59,7 +59,7 @@ Argumentos: `<eventStatus> [appointmentId] [patientId] [appointmentDate]`. Cada 
 ./scripts/publicar-evento.sh --repetir     # o serviço ignora, log WARN, nenhuma linha nova
 ```
 
-Dá para publicar pelo console também: **Exchanges → `history.exchange` → Publish message**, routing
+Dá para publicar pelo console também: **Exchanges → `appointment.exchange` → Publish message**, routing
 key `history.created`, propriedade `content_type` = `application/json`. O contrato completo da
 mensagem está em [`docs/messaging/appointment-event.md`](docs/messaging/appointment-event.md).
 
@@ -204,7 +204,7 @@ Variáveis deste serviço (`history-service/.env`):
 |---|---|
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `history_db` / `postgres` / `postgres` |
 | `DB_HOST` / `DB_PORT` | `localhost` / `5432` |
-| `RABBITMQ_EXCHANGE` / `RABBITMQ_QUEUE` / `RABBITMQ_ROUTING_KEY` | `history.exchange` / `history.queue` / `history.created` |
+| `RABBITMQ_EXCHANGE` / `RABBITMQ_QUEUE` / `RABBITMQ_ROUTING_KEY` | `appointment.exchange` / `history.queue` / `history.created` |
 | `SERVER_PORT` | `8081` |
 | `GRAPHIQL_ENABLED` | `true` |
 
