@@ -1,5 +1,6 @@
 package br.com.tech.challenge.authservice.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -17,14 +18,18 @@ public class ApiExceptionHandler {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
     }
 
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<Map<String, String>> dataIntegrityViolation(DataIntegrityViolationException exception) {
+        String cause = exception.getMostSpecificCause().getMessage();
+        if (cause != null && cause.toLowerCase().contains("email")) {
+            return error(HttpStatus.CONFLICT, "Email already exists");
+        }
+        return error(HttpStatus.CONFLICT, "Request violates a data integrity constraint");
+    }
+
     @ExceptionHandler(RoleNotFoundException.class)
     ResponseEntity<Map<String, String>> roleNotFound(RoleNotFoundException exception) {
         return error(HttpStatus.NOT_FOUND, exception.getMessage());
-    }
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String, String>> badRequest(IllegalArgumentException exception) {
-        return error(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
     @ExceptionHandler(EmailAlreadyExistsException.class)

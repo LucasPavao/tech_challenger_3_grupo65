@@ -10,6 +10,8 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -18,6 +20,7 @@ import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.web.SecurityFilterChain;
 
 import java.security.interfaces.RSAPrivateKey;
@@ -39,7 +42,12 @@ public class SecurityConfig {
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
-                        .requestMatchers("/auth/login").authenticated()
+                        .requestMatchers("/auth/login").access((authentication, _) -> {
+                            Authentication current = authentication.get();
+                            boolean authenticatedWithBasic = current instanceof UsernamePasswordAuthenticationToken
+                                    && current.isAuthenticated();
+                            return new AuthorizationDecision(authenticatedWithBasic);
+                        })
                         .requestMatchers("/users/**").hasRole("ADMIN")
                         .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())

@@ -2,11 +2,13 @@ package br.com.tech.challenge.authservice.entity;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
-@Data
+@Getter
+@Setter
 @Table(name = "users")
 @AllArgsConstructor
 @NoArgsConstructor

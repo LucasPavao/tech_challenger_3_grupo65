@@ -17,7 +17,7 @@ public class JwtService {
 
     private final JwtEncoder jwtEncoder;
 
-    private final Duration TOKEN_VALIDITY = Duration.ofMinutes(15);
+    private static final Duration TOKEN_VALIDITY = Duration.ofMinutes(15);
 
     public JwtService(JwtEncoder jwtEncoder) {
         this.jwtEncoder = jwtEncoder;

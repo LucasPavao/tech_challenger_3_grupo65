@@ -89,18 +89,21 @@ Com o PostgreSQL em execução:
 Linux/macOS:
 
 ```bash
-./mvnw spring-boot:run
+SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
 Windows PowerShell:
 
 ```powershell
-./mvnw.cmd spring-boot:run
+$env:SPRING_PROFILES_ACTIVE="dev"; ./mvnw.cmd spring-boot:run
 ```
 
 O serviço ficará disponível em `http://localhost:8082`.
 
-O Flyway cria as tabelas e insere as roles e usuários padrão automaticamente na primeira execução.
+O Flyway cria as tabelas e insere as roles automaticamente na primeira execução. Os usuários
+padrão de desenvolvimento (seção abaixo) só são inseridos com o profile `dev` ativo — sem ele,
+o banco sobe só com as roles, sem nenhum usuário. Isso evita que credenciais padrão conhecidas
+sejam inseridas automaticamente em um banco que não seja de desenvolvimento local.
 
 ## Executar pela raiz do projeto
 
@@ -126,7 +129,10 @@ O `auth-service` utiliza a porta `8082` e o PostgreSQL utiliza a porta `5434`.
 
 ## Usuários padrão de desenvolvimento
 
-Os usuários abaixo são inseridos pela migration `V4__seed_users.sql`:
+Os usuários abaixo são inseridos pela migration `V4__seed_users.sql`, localizada em
+`src/main/resources/db/dev-seed` e aplicada apenas quando o profile Spring `dev` está ativo
+(veja `application-dev.yaml`). Rodando sem esse profile, a migration não é executada e o
+banco fica só com as roles.
 
 | Role | E-mail | Senha |
 |---|---|---|
