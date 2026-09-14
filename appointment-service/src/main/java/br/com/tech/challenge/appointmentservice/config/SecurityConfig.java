@@ -19,7 +19,7 @@ import java.security.interfaces.RSAPublicKey;
 @EnableMethodSecurity
 public class SecurityConfig {
 
-    @Value("classpath:app.sub")
+    @Value("${security.jwt.public-key}")
     private RSAPublicKey publicKey;
 
     @Value("${security.jwt.issuer}")
