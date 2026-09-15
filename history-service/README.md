@@ -71,7 +71,7 @@ mensagem está em [`docs/messaging/appointment-event.md`](docs/messaging/appoint
 **Estado atual de cada consulta do paciente** — uma entrada por consulta:
 
 ```bash
-curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' -H "Authorization: Bearer $TOKEN" \
   -d '{"query":"{ patientHistory(patientId: 10) { appointmentId eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -85,7 +85,7 @@ curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json
 **Trilha completa de uma consulta** — todo o histórico, com a data original preservada:
 
 ```bash
-curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' \
+curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json' -H "Authorization: Bearer $TOKEN" \
   -d '{"query":"{ appointmentTimeline(appointmentId: 42) { eventStatus appointmentDate } }"}' \
   | python3 -m json.tool
 ```
@@ -100,8 +100,12 @@ curl -s -X POST http://localhost:8081/graphql -H 'content-type: application/json
 
 Campos disponíveis e formatos em [`docs/graphql/queries.md`](docs/graphql/queries.md).
 
-> O endpoint está **aberto** nesta fase. A autorização por role entra quando a Pessoa 1 publicar o
-> formato do JWT.
+> O endpoint exige um JWT do auth-service. Os exemplos acima precisam do header
+> `-H "Authorization: Bearer $TOKEN"`, com o token obtido em
+> `TOKEN=$(curl -s -X POST http://localhost:8083/auth/login -u maria.santos@hospital.com:Enfermeira@123 | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')`.
+> `patientHistory` aceita DOCTOR, NURSE e PATIENT (só o próprio `patientId`); `appointmentTimeline`
+> aceita DOCTOR e NURSE. A chave pública vem de `security.jwt.public-key` — pela IDE, o padrão é
+> `file:../.jwt-keys/app.sub`, criada ao subir o ambiente pela raiz.
 
 ### 3. Conferir o que foi gravado
 
@@ -130,25 +134,8 @@ Para ver o que caiu na DLQ: **Queues → `history.queue.dlq` → Get messages**.
 
 ### Collection do Postman
 
-[`docs/postman/history-service.postman_collection.json`](docs/postman/history-service.postman_collection.json)
-— importe no Postman (**Import → File**). Ela cobre o fluxo inteiro em duas pastas:
-
-1. **Publicar eventos** — o ciclo de vida da consulta, a reentrega duplicada, os dois casos de DLQ
-   e uma leitura da DLQ que mostra os payloads rejeitados
-2. **Consultar por GraphQL** — as duas queries e os casos de borda
-
-Cada requisição tem asserts, então dá para rodar tudo de uma vez no **Collection Runner** (use
-*Delay* de 800 ms — a ingestão passa pelo RabbitMQ e é assíncrona). Pela linha de comando:
-
-```bash
-npx newman run docs/postman/history-service.postman_collection.json --delay-request 800
-```
-
-Para repetir do zero, limpe a tabela antes — senão a pasta 1 acrescenta linhas à trilha:
-
-```bash
-docker exec grupo65-history-postgres-1 psql -U postgres -d history_db -c 'TRUNCATE medical_history;'
-```
+O roteiro com login, agendamento, histórico e notificações está na collection única da raiz:
+[`docs/postman/tech-challenge-grupo65.postman_collection.json`](../docs/postman/tech-challenge-grupo65.postman_collection.json).
 
 ## Rodar os testes automatizados
 
@@ -159,7 +146,7 @@ Testcontainers, sem precisar do `docker compose` nem do `.env`.
 ./mvnw test
 ```
 
-57 testes: contrato da mensagem, persistência, idempotência, resolvers GraphQL, tratamento de erro
+60 testes: contrato da mensagem, regra de acesso do paciente, persistência, idempotência, resolvers GraphQL, tratamento de erro
 e dois testes de integração ponta a ponta (RabbitMQ real → Postgres real → resposta GraphQL).
 
 ## Tabela `medical_history`

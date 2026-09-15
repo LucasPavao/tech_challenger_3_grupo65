@@ -11,6 +11,10 @@ import br.com.tech.challenge.historyservice.entities.MedicalHistory;
 import br.com.tech.challenge.historyservice.repositories.MedicalHistoryRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -50,7 +54,7 @@ class MedicalHistoryQueryServiceTest {
     void converteAEntidadeParaAResposta() {
         when(repository.findLatestEventPerAppointment(10L)).thenReturn(List.of(registro()));
 
-        MedicalRecordResponse resposta = service.patientHistory(10L).getFirst();
+        MedicalRecordResponse resposta = service.patientHistory(10L, null).getFirst();
 
         assertThat(resposta.appointmentId()).isEqualTo("42");
         assertThat(resposta.patientId()).isEqualTo("10");
@@ -65,7 +69,7 @@ class MedicalHistoryQueryServiceTest {
     void formataAsDatasComoIso8601() {
         when(repository.findLatestEventPerAppointment(10L)).thenReturn(List.of(registro()));
 
-        MedicalRecordResponse resposta = service.patientHistory(10L).getFirst();
+        MedicalRecordResponse resposta = service.patientHistory(10L, null).getFirst();
 
         assertThat(resposta.appointmentDate()).isEqualTo("2026-09-05T09:00:00");
         assertThat(resposta.occurredAt()).isEqualTo("2026-08-30T14:32:10Z");
@@ -84,7 +88,7 @@ class MedicalHistoryQueryServiceTest {
                 .build();
         when(repository.findLatestEventPerAppointment(10L)).thenReturn(List.of(semNomes));
 
-        MedicalRecordResponse resposta = service.patientHistory(10L).getFirst();
+        MedicalRecordResponse resposta = service.patientHistory(10L, null).getFirst();
 
         assertThat(resposta.patientName()).isNull();
         assertThat(resposta.doctorName()).isNull();
@@ -95,12 +99,12 @@ class MedicalHistoryQueryServiceTest {
     void devolveListaVaziaQuandoNaoHaHistorico() {
         when(repository.findLatestEventPerAppointment(404L)).thenReturn(List.of());
 
-        assertThat(service.patientHistory(404L)).isEmpty();
+        assertThat(service.patientHistory(404L, null)).isEmpty();
     }
 
     @Test
     void rejeitaPatientIdNulo() {
-        assertThatThrownBy(() -> service.patientHistory(null))
+        assertThatThrownBy(() -> service.patientHistory(null, null))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(repository, never()).findLatestEventPerAppointment(any());
@@ -142,5 +146,35 @@ class MedicalHistoryQueryServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(repository, never()).findByAppointmentIdOrderByOccurredAtAscIdAsc(any());
+    }
+
+    private JwtAuthenticationToken token(String role, long userId) {
+        Jwt jwt = Jwt.withTokenValue("token")
+                .header("alg", "RS256")
+                .claim("user_id", userId)
+                .build();
+        return new JwtAuthenticationToken(jwt, List.of(new SimpleGrantedAuthority(role)));
+    }
+
+    @Test
+    void pacienteConsultaOProprioHistorico() {
+        when(repository.findLatestEventPerAppointment(10L)).thenReturn(List.of(registro()));
+
+        assertThat(service.patientHistory(10L, token("ROLE_PATIENT", 10L))).hasSize(1);
+    }
+
+    @Test
+    void pacienteNaoConsultaHistoricoDeOutroPaciente() {
+        assertThatThrownBy(() -> service.patientHistory(11L, token("ROLE_PATIENT", 10L)))
+                .isInstanceOf(AccessDeniedException.class);
+
+        verify(repository, never()).findLatestEventPerAppointment(any());
+    }
+
+    @Test
+    void enfermeiraConsultaHistoricoDeQualquerPaciente() {
+        when(repository.findLatestEventPerAppointment(11L)).thenReturn(List.of(registro()));
+
+        assertThat(service.patientHistory(11L, token("ROLE_NURSE", 3L))).hasSize(1);
     }
 }

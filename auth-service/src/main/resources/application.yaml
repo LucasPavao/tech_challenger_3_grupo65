@@ -2,7 +2,7 @@ spring:
   application:
     name: auth-service
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${POSTGRES_DB:auth_db}
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5435}/${POSTGRES_DB:auth_db}
     driverClassName: org.postgresql.Driver
     username: ${POSTGRES_USER:postgres}
     password: ${POSTGRES_PASSWORD:postgres}
@@ -25,3 +25,15 @@ server:
   port: ${SERVER_PORT:8083}
 
 spring.web.error.include-stacktrace: never
+
+security:
+  jwt:
+    # No Docker vem de JWT_PUBLIC_KEY/JWT_PRIVATE_KEY (file:/keys/...); pela IDE, da pasta .jwt-keys da raiz.
+    public-key: ${JWT_PUBLIC_KEY:file:../.jwt-keys/app.sub}
+    private-key: ${JWT_PRIVATE_KEY:file:../.jwt-keys/app.key}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

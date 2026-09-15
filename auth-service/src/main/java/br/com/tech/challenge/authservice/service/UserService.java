@@ -76,7 +76,7 @@ public class UserService {
     private void validateEmailAvailable(String email, Long currentUserId) {
         userRepository.findByEmail(email)
                 .filter(existingUser -> !existingUser.getId().equals(currentUserId))
-                .ifPresent(_ -> {
+                .ifPresent(existingUser -> {
                     throw new EmailAlreadyExistsException(email);
                 });
     }

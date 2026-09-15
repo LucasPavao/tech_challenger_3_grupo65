@@ -35,6 +35,9 @@ services:
       DB_PORT: 5432
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
+      JWT_PUBLIC_KEY: file:/keys/app.sub
+    volumes:
+      - ../.jwt-keys:/keys:ro
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
@@ -42,6 +45,8 @@ services:
       - shared
     restart: on-failure
     depends_on:
+      jwt-keys:
+        condition: service_completed_successfully
       notification-postgres:
         condition: service_healthy
       rabbitmq:

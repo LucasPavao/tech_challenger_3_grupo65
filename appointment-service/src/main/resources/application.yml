@@ -52,3 +52,5 @@ management:
 security:
   jwt:
     issuer: ${JWT_ISSUER:auth-service}
+    # No Docker vem de JWT_PUBLIC_KEY=file:/keys/app.sub; pela IDE, da pasta .jwt-keys da raiz.
+    public-key: ${JWT_PUBLIC_KEY:file:../.jwt-keys/app.sub}

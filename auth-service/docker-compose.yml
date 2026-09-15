@@ -31,8 +31,11 @@ services:
     environment:
       DB_HOST: auth-postgres
       DB_PORT: 5432
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: 5672
+      SPRING_PROFILES_ACTIVE: dev          # insere os usuarios de exemplo
+      JWT_PUBLIC_KEY: file:/keys/app.sub
+      JWT_PRIVATE_KEY: file:/keys/app.key
+    volumes:
+      - ../.jwt-keys:/keys:ro
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
@@ -40,6 +43,8 @@ services:
       - shared
     restart: on-failure
     depends_on:
+      jwt-keys:
+        condition: service_completed_successfully
       auth-postgres:
         condition: service_healthy
     healthcheck:

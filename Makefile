@@ -29,5 +29,5 @@ logs: ## Segue os logs de todos os servicos
 ps: ## Estado dos containers
 	docker compose ps
 
-smoke: ## Teste ponta a ponta: appointment -> RabbitMQ -> history e notification
+smoke: ## Teste ponta a ponta: login -> appointment -> RabbitMQ -> history e notification
 	./scripts/smoke-test.sh

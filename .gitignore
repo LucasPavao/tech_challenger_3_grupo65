@@ -2,3 +2,7 @@
 .claude
 .env
 **/.env
+.jwt-keys/
+# Chaves geradas pelos scripts antigos de versoes anteriores; hoje o par fica em .jwt-keys/
+**/src/main/resources/app.key
+**/src/main/resources/app.sub

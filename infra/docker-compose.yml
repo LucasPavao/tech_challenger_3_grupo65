@@ -1,6 +1,25 @@
 name: grupo65
 
 services:
+  # Gera o par RSA do JWT na primeira subida, em .jwt-keys/ na raiz do monorepo, e termina.
+  # O comando fica aqui (e nao num .sh) para nao sofrer conversao CRLF num checkout do Windows.
+  jwt-keys:
+    image: alpine:3.22
+    volumes:
+      - ../.jwt-keys:/keys
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -f /keys/app.key ] && [ -f /keys/app.sub ]; then echo "chaves JWT ja existem"; exit 0; fi
+        apk add --no-cache openssl >/dev/null
+        rm -f /keys/app.key /keys/app.sub
+        openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /keys/app.key
+        openssl pkey -pubout -in /keys/app.key -out /keys/app.sub
+        chmod 444 /keys/app.key /keys/app.sub || true
+        echo "chaves JWT geradas"
+
   rabbitmq:
     image: rabbitmq:4-management-alpine
     environment:

@@ -9,13 +9,17 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.GraphQlTest;
 import org.springframework.graphql.test.tester.GraphQlTester;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @GraphQlTest(HistoryQueryController.class)
+@WithMockUser(roles = "NURSE")
 class HistoryQueryControllerTest {
 
     @Autowired
@@ -32,7 +36,7 @@ class HistoryQueryControllerTest {
 
     @Test
     void patientHistoryDevolveOsCamposDoRegistro() {
-        when(queryService.patientHistory(10L))
+        when(queryService.patientHistory(eq(10L), any()))
                 .thenReturn(List.of(resposta("42", AppointmentEventStatus.COMPLETED)));
 
         graphQlTester.document("""
@@ -58,18 +62,18 @@ class HistoryQueryControllerTest {
 
     @Test
     void patientHistoryConverteOArgumentoIdParaLong() {
-        when(queryService.patientHistory(10L)).thenReturn(List.of());
+        when(queryService.patientHistory(eq(10L), any())).thenReturn(List.of());
 
         graphQlTester.document("{ patientHistory(patientId: 10) { appointmentId } }")
                 .execute()
                 .path("patientHistory").entityList(Object.class).hasSize(0);
 
-        verify(queryService).patientHistory(10L);
+        verify(queryService).patientHistory(eq(10L), any());
     }
 
     @Test
     void patientHistoryDevolveListaVaziaSemErro() {
-        when(queryService.patientHistory(404L)).thenReturn(List.of());
+        when(queryService.patientHistory(eq(404L), any())).thenReturn(List.of());
 
         graphQlTester.document("{ patientHistory(patientId: 404) { appointmentId } }")
                 .execute()
@@ -79,7 +83,7 @@ class HistoryQueryControllerTest {
 
     @Test
     void devolveApenasOsCamposPedidos() {
-        when(queryService.patientHistory(10L))
+        when(queryService.patientHistory(eq(10L), any()))
                 .thenReturn(List.of(resposta("42", AppointmentEventStatus.SCHEDULED)));
 
         graphQlTester.document("{ patientHistory(patientId: 10) { appointmentId } }")

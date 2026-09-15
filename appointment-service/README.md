@@ -156,3 +156,8 @@ Os endpoints de consulta exigem um JWT emitido pelo `auth-service` no header
 - Médicos podem consultar e editar consultas.
 - Pacientes podem consultar apenas consultas associadas ao `user_id` presente no próprio token.
 - O health check continua público.
+
+A chave pública que valida o token vem de `security.jwt.public-key`. No Docker ela é montada de
+`.jwt-keys/app.sub` (gerada pelo serviço `jwt-keys` do compose). Pela IDE, rodando a partir desta
+pasta, o padrão é `file:../.jwt-keys/app.sub`: suba o ambiente uma vez com `make infra` (ou
+`docker compose up -d` na raiz) para a pasta existir, ou aponte `JWT_PUBLIC_KEY` para outro arquivo.

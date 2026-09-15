@@ -10,6 +10,7 @@ import br.com.tech.challenge.historyservice.dto.AppointmentEventDTO;
 import br.com.tech.challenge.historyservice.repositories.MedicalHistoryRepository;
 import br.com.tech.challenge.historyservice.support.PostgresTestcontainers;
 import br.com.tech.challenge.historyservice.support.RabbitTestcontainers;
+import br.com.tech.challenge.historyservice.support.TestJwt;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -36,6 +37,8 @@ class HistoryGraphQlIT {
     private static final LocalDateTime NOVA_DATA = LocalDateTime.of(2026, 9, 12, 14, 0);
 
     @Autowired
+    private HttpGraphQlTester testerSemToken;
+
     private HttpGraphQlTester graphQlTester;
 
     @Autowired
@@ -52,6 +55,10 @@ class HistoryGraphQlIT {
 
     @BeforeEach
     void limparBase() {
+        // O endpoint exige JWT: o token e assinado com a chave de teste que a aplicacao valida.
+        graphQlTester = testerSemToken.mutate()
+                .header("Authorization", "Bearer " + TestJwt.token("ROLE_NURSE", 3L))
+                .build();
         repository.deleteAll();
     }
 

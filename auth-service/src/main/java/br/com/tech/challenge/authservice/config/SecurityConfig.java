@@ -29,10 +29,10 @@ import java.security.interfaces.RSAPublicKey;
 @Configuration
 public class SecurityConfig {
 
-    @Value("classpath:app.sub")
+    @Value("${security.jwt.public-key}")
     private RSAPublicKey publicKey;
 
-    @Value("classpath:app.key")
+    @Value("${security.jwt.private-key}")
     private RSAPrivateKey privateKey;
 
     @Bean
@@ -42,13 +42,14 @@ public class SecurityConfig {
                 .headers(headers -> headers
                         .frameOptions(HeadersConfigurer.FrameOptionsConfig::sameOrigin))
                 .authorizeHttpRequests(authorizeRequests -> authorizeRequests
-                        .requestMatchers("/auth/login").access((authentication, _) -> {
+                        .requestMatchers("/auth/login").access((authentication, context) -> {
                             Authentication current = authentication.get();
                             boolean authenticatedWithBasic = current instanceof UsernamePasswordAuthenticationToken
                                     && current.isAuthenticated();
                             return new AuthorizationDecision(authenticatedWithBasic);
                         })
                         .requestMatchers("/users/**").hasRole("ADMIN")
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())
                 .httpBasic(Customizer.withDefaults())
