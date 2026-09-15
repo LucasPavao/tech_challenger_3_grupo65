@@ -1,290 +1,132 @@
 # Auth Service
 
-Serviço responsável pelo gerenciamento de usuários, autenticação e emissão de tokens JWT para os demais serviços do projeto Tech Challenge FIAP — Fase 3, Grupo 65.
+Serviço de usuários, autenticação e emissão de tokens JWT do Tech Challenge FIAP — Fase 3 — Grupo 65.
 
 ## Responsabilidades
 
-- Autenticar usuários por e-mail e senha.
-- Emitir tokens JWT assinados com RSA.
-- Gerenciar usuários e suas roles.
-- Validar permissões administrativas.
-- Disponibilizar a chave pública usada por `appointment-service` e `history-service` para validar os tokens.
+- Autenticar usuários por e-mail e senha (HTTP Basic).
+- Emitir tokens JWT assinados com RSA, válidos por 15 minutos.
+- Gerenciar usuários e suas roles (somente ADMIN).
+
+A autorização das rotas de agendamento, histórico e notificações é aplicada por cada serviço, que
+valida o token com a chave pública.
 
 ## Tecnologias
 
-- Java 25
-- Spring Boot 4.1.1
-- Spring Security
-- OAuth2 Resource Server
-- Spring Data JPA
-- PostgreSQL
-- Flyway
-- Bean Validation
-- Lombok
+Java 21, Spring Boot 4.1, Spring Security (HTTP Basic + OAuth2 Resource Server), Spring Data JPA,
+PostgreSQL, Flyway, Bean Validation e Lombok.
 
-## Pré-requisitos
+## Subindo
 
-- Docker e Docker Compose.
-- JDK 25.
-- Maven não é necessário: o projeto possui Maven Wrapper (`mvnw`/`mvnw.cmd`).
+O caminho normal é pela raiz do monorepo, junto com os demais serviços — veja o
+[Início rápido](../README.md#início-rápido). O compose ativa o profile `dev` (usuários de exemplo)
+e monta as chaves geradas pelo serviço `jwt-keys` em `.jwt-keys/`.
 
-## Configuração
+| Endereço | O quê |
+|---|---|
+| <http://localhost:8083/auth/login> | login |
+| <http://localhost:8083/actuator/health> | health check público |
+| `localhost:5435` | PostgreSQL `auth_db` |
 
-Na primeira execução, copie o arquivo de exemplo:
+## Rodando pela IDE
 
-```bash
-cp .env.example .env
-```
-
-No Windows PowerShell:
-
-```powershell
-Copy-Item .env.example .env
-```
-
-Valores padrão do `.env`:
-
-| Variável | Valor padrão | Descrição |
-|---|---|---|
-| `POSTGRES_DB` | `auth_db` | Banco do serviço |
-| `POSTGRES_USER` | `postgres` | Usuário do banco |
-| `POSTGRES_PASSWORD` | `postgres` | Senha do banco |
-| `DB_HOST` | `localhost` | Host usado ao executar a aplicação localmente |
-| `DB_PORT` | `5434` | Porta publicada do PostgreSQL |
-| `SERVER_PORT` | `8083` | Porta HTTP da aplicação |
-
-O arquivo `.env` não deve ser versionado.
-
-## Chaves JWT
-
-O serviço utiliza:
-
-- `src/main/resources/app.key`: chave privada usada para assinar os tokens;
-- `src/main/resources/app.sub`: chave pública usada para validar os tokens.
-
-A chave privada nunca deve ser publicada no GitHub ou incluída em uma imagem pública. Em produção, injete-a como secret e substitua a configuração baseada em arquivo de classpath por uma configuração segura.
-
-Os serviços consumidores precisam possuir a chave pública correspondente. A chave pública pode ser distribuída aos serviços, mas a chave privada deve permanecer exclusivamente no `auth-service`.
-
-### Primeira execução
-
-Antes de subir o ambiente pela primeira vez, gere o par de chaves e distribua a chave pública:
-
-Na raiz do projeto, em Linux/macOS/WSL:
-
-```bash
-bash scripts/generate-jwt-keys.sh
-```
-
-No Windows PowerShell:
-
-```powershell
-.\scripts\generate-jwt-keys.ps1
-```
-
-O script gera `auth-service/src/main/resources/app.key` e `app.sub`, e copia a mesma chave pública para `appointment-service` e `history-service`. Ele não substitui uma chave privada existente. Se existir apenas metade do par, o script interrompe a execução para evitar um par inconsistente.
-
-Depois da geração, suba a infraestrutura e os demais serviços. O Compose do `auth-service` fornece o PostgreSQL; a aplicação de autenticação é executada localmente pelo Maven Wrapper:
-
-```bash
-make up
-```
-
-Em outro terminal, na pasta `auth-service`:
-
-```bash
-./mvnw spring-boot:run
-```
-
-No Windows PowerShell:
-
-```powershell
-.\mvnw.cmd spring-boot:run
-```
-
-Se as chaves forem recriadas e os serviços consumidores estiverem em containers, reconstrua as imagens:
-
-```bash
-docker compose up -d --build
-```
-
-## Subir somente o banco
-
-Execute os comandos a partir desta pasta (`auth-service`):
-
-```bash
-docker compose up -d
-```
-
-O Compose sobe o container `auth-service-postgres`.
-
-Verifique o estado:
-
-```bash
-docker compose ps
-```
-
-## Executar a aplicação localmente
-
-Com o PostgreSQL em execução:
-
-Linux/macOS:
+1. Na raiz: `make infra` (ou `COMPOSE_PROFILES= docker compose up -d`) — sobe o banco e gera `.jwt-keys/`.
+2. Nesta pasta, com o profile `dev`:
 
 ```bash
 SPRING_PROFILES_ACTIVE=dev ./mvnw spring-boot:run
 ```
 
-Windows PowerShell:
-
 ```powershell
-$env:SPRING_PROFILES_ACTIVE="dev"; ./mvnw.cmd spring-boot:run
+$env:SPRING_PROFILES_ACTIVE="dev"; .\mvnw.cmd spring-boot:run
 ```
 
-O serviço ficará disponível em `http://localhost:8083`.
+As chaves padrão são `file:../.jwt-keys/app.key` e `file:../.jwt-keys/app.sub`, relativas a esta
+pasta. Em outro diretório de trabalho, defina `JWT_PRIVATE_KEY` e `JWT_PUBLIC_KEY` com caminhos absolutos.
 
-O Flyway cria as tabelas e insere as roles automaticamente na primeira execução. Os usuários
-padrão de desenvolvimento (seção abaixo) só são inseridos com o profile `dev` ativo — sem ele,
-o banco sobe só com as roles, sem nenhum usuário. Isso evita que credenciais padrão conhecidas
-sejam inseridas automaticamente em um banco que não seja de desenvolvimento local.
+## Configuração
 
-## Executar pela raiz do projeto
-
-Na raiz do monorepo:
-
-```bash
-make setup
-```
-
-Para subir todo o ambiente:
-
-```bash
-make up
-```
-
-Para subir somente a infraestrutura e executar as aplicações pela IDE ou Maven:
-
-```bash
-make infra
-```
-
-O `auth-service` utiliza a porta `8083` e o PostgreSQL utiliza a porta `5434`.
-
-## Usuários padrão de desenvolvimento
-
-Os usuários abaixo são inseridos pela migration `V4__seed_users.sql`, localizada em
-`src/main/resources/db/dev-seed` e aplicada apenas quando o profile Spring `dev` está ativo
-(veja `application-dev.yaml`). Rodando sem esse profile, a migration não é executada e o
-banco fica só com as roles.
-
-| Role | E-mail | Senha |
+| Variável | Padrão | Descrição |
 |---|---|---|
-| `ADMIN` | `admin@hospital.com` | `Admin@123` |
-| `DOCTOR` | `joao.silva@hospital.com` | `Doutor@123` |
-| `NURSE` | `maria.santos@hospital.com` | `Enfermeira@123` |
-| `PATIENT` | `lucas.oliveira@hospital.com` | `Paciente@123` |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `auth_db` / `postgres` / `postgres` | banco |
+| `DB_HOST` / `DB_PORT` | `localhost` / `5435` | conexão pela IDE (no Docker: `auth-postgres:5432`) |
+| `SERVER_PORT` | `8083` | porta HTTP |
+| `JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` | `file:../.jwt-keys/app.key` / `file:../.jwt-keys/app.sub` | par RSA (no Docker: `file:/keys/...`) |
+| `SPRING_PROFILES_ACTIVE` | vazio (no Docker: `dev`) | `dev` insere os usuários de exemplo |
 
-Essas credenciais são apenas para desenvolvimento e devem ser alteradas ou removidas antes de qualquer implantação real.
+## Usuários de exemplo
+
+Inseridos pela migration `db/dev-seed/V4__seed_users.sql`, só com o profile `dev`. Sem ele, o banco
+fica apenas com as roles.
+
+| Role | E-mail | Senha | `user_id` |
+|---|---|---|---|
+| `ADMIN` | `admin@hospital.com` | `Admin@123` | 1 |
+| `DOCTOR` | `joao.silva@hospital.com` | `Doutor@123` | 2 |
+| `NURSE` | `maria.santos@hospital.com` | `Enfermeira@123` | 3 |
+| `PATIENT` | `lucas.oliveira@hospital.com` | `Paciente@123` | 4 |
+
+São credenciais de desenvolvimento: não use em nenhum ambiente real.
 
 ## Autenticação
 
-O login utiliza HTTP Basic com o e-mail como usuário e a senha como password. Não envie as credenciais em JSON.
-
 ```bash
-curl -i -X POST http://localhost:8083/auth/login \
-  -u admin@hospital.com:Admin@123
+curl -s -X POST http://localhost:8083/auth/login -u maria.santos@hospital.com:Enfermeira@123
 ```
-
-Resposta esperada:
 
 ```json
-{
-  "access_token": "eyJ..."
-}
+{ "access_token": "eyJ..." }
 ```
 
-Use o valor de `access_token` nas chamadas aos serviços protegidos:
+Use o token em `Authorization: Bearer <access_token>` nos outros serviços. Claims:
 
-```bash
-curl -i http://localhost:8080/appointments \
-  -H "Authorization: Bearer <access_token>"
-```
-
-O token tem validade de 15 minutos e contém, entre outros, os seguintes claims:
-
-| Claim | Descrição |
+| Claim | Conteúdo |
 |---|---|
-| `sub` | E-mail do usuário autenticado |
-| `user_id` | ID interno do usuário |
-| `scope` | Role no formato `ROLE_ADMIN`, `ROLE_DOCTOR`, `ROLE_NURSE` ou `ROLE_PATIENT` |
+| `sub` | e-mail do usuário |
+| `user_id` | id do usuário — é o `patientId` de um PATIENT |
+| `scope` | `ROLE_ADMIN`, `ROLE_DOCTOR`, `ROLE_NURSE` ou `ROLE_PATIENT` |
 | `iss` | `auth-service` |
-| `exp` | Data de expiração |
+| `exp` | expiração (15 minutos) |
 
 ## Endpoints
 
 | Método | Endpoint | Permissão | Descrição |
 |---|---|---|---|
-| `POST` | `/auth/login` | Basic Auth | Gera um JWT |
-| `GET` | `/users` | `ADMIN` | Lista usuários |
-| `GET` | `/users/{id}` | `ADMIN` | Busca usuário por ID |
-| `POST` | `/users` | `ADMIN` | Cria usuário |
-| `PUT` | `/users/{id}` | `ADMIN` | Atualiza usuário |
-| `DELETE` | `/users/{id}` | `ADMIN` | Remove usuário |
-
-Exemplo de criação de usuário:
-
-```bash
-curl -i -X POST http://localhost:8083/users \
-  -H "Authorization: Bearer <token-admin>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Novo Paciente",
-    "email": "novo.paciente@hospital.com",
-    "password": "Paciente@123",
-    "role": "PATIENT"
-  }'
-```
-
-O e-mail deve ser válido e único. Se já existir, a API responde com `409 CONFLICT`.
-
-## Roles e autorização
-
-- `ADMIN`: gerencia usuários no `auth-service`.
-- `DOCTOR`: consulta e edita consultas e acessa o histórico.
-- `NURSE`: registra, consulta e edita consultas e acessa o histórico.
-- `PATIENT`: visualiza somente suas próprias consultas e seu próprio histórico.
-
-O `auth-service` emite o token, mas a autorização dos endpoints de agendamento e histórico é aplicada localmente por cada serviço consumidor.
-
-## Parar o serviço
-
-Para parar o PostgreSQL preservando os dados:
+| `POST` | `/auth/login` | Basic Auth | gera um JWT |
+| `GET` | `/users` | `ADMIN` | lista usuários |
+| `GET` | `/users/{id}` | `ADMIN` | busca usuário |
+| `POST` | `/users` | `ADMIN` | cria usuário |
+| `PUT` | `/users/{id}` | `ADMIN` | atualiza usuário |
+| `DELETE` | `/users/{id}` | `ADMIN` | remove usuário |
+| `GET` | `/actuator/health` | pública | health check |
 
 ```bash
-docker compose down
+curl -s -X POST http://localhost:8083/users \
+  -H "Authorization: Bearer <token-admin>" -H "Content-Type: application/json" \
+  -d '{"name":"Novo Paciente","email":"novo.paciente@hospital.com","password":"Paciente@123","role":"PATIENT"}'
 ```
 
-Para remover também o volume do banco:
+O e-mail precisa ser válido e único; se já existir, a resposta é `409 CONFLICT`.
+
+## Testes
 
 ```bash
-docker compose down -v
+./mvnw test
 ```
 
-O segundo comando apaga os dados locais do `auth-service` e deve ser usado somente quando isso for intencional.
+Não precisam de banco nem de `.jwt-keys/`: usam o par só de teste em `src/test/resources/jwt-test/`.
 
 ## Solução de problemas
 
 | Problema | Solução |
 |---|---|
-| `Connection refused` na porta `5434` | Execute `docker compose up -d` e aguarde o PostgreSQL ficar saudável |
-| Porta `8083` ocupada | Altere `SERVER_PORT` no `.env` e use a nova porta |
-| Porta `5434` ocupada | Altere `DB_PORT` no `.env` e mantenha a configuração consistente |
-| Erro de `JAVA_HOME` | Instale o JDK 25 e configure `JAVA_HOME` para o diretório correto |
-| Token rejeitado nos outros serviços | Confirme a mesma chave pública, o emissor `auth-service` e o header `Authorization: Bearer ...` |
+| login devolve `401` com a senha certa | o profile `dev` não está ativo, então não há usuários |
+| `FileNotFoundException ... .jwt-keys/app.key` pela IDE | rode `make infra` na raiz antes, ou defina `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` |
+| token recusado nos outros serviços com `401` | token expirado, ou chaves regeneradas depois do login: faça login de novo |
+| porta `8083` ou `5435` ocupada | altere `SERVER_PORT` ou `DB_PORT` no `.env` |
 
 ## Segurança
 
-- Não commite `app.key`.
-- Não reutilize as credenciais padrão em produção.
-- Não registre tokens JWT nos logs.
-- Use HTTPS quando o serviço estiver fora de uma rede local confiável.
-- Faça rotação do par de chaves quando houver suspeita de exposição da chave privada.
+- A chave privada fica só em `.jwt-keys/` (ignorada pelo git) e só o auth-service a monta.
+- Não reutilize as credenciais de exemplo fora do desenvolvimento.
+- Não registre tokens em logs.
