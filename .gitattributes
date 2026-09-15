@@ -7,6 +7,8 @@
 mvnw text eol=lf
 *.sh text eol=lf
 Makefile text eol=lf
+# Um .env copiado de um .env.example com CRLF leva o \r para dentro dos valores.
+.env.example text eol=lf
 
 # Scripts do Windows continuam com CRLF.
 *.cmd text eol=crlf
