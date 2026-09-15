@@ -30,9 +30,10 @@ appointment-service --publica AppointmentEvent--> RabbitMQ (notification.queue)
 
 ## Endpoints REST
 
-| Método | Rota | Descrição |
-|---|---|---|
-| GET | `/notifications/patient/{patientId}` | Lista as notificações de um paciente |
+| Método | Rota | Permissão | Descrição |
+|---|---|---|---|
+| GET | `/notifications/patient/{patientId}` | DOCTOR, NURSE, PATIENT (só o próprio) | Lista as notificações de um paciente |
+| GET | `/actuator/health` | pública | Health check |
 
 ## Formato do evento consumido (AppointmentEvent)
 
@@ -140,7 +141,9 @@ No log da aplicação deve aparecer `Evento de appointment recebido: appointment
 eventStatus=SCHEDULED`, seguido de `LEMBRETE ENVIADO - paciente=10, ...`. Depois, confirme pela API:
 
 ```bash
-curl http://localhost:8082/notifications/patient/10
+TOKEN=$(curl -s -X POST http://localhost:8083/auth/login -u maria.santos@hospital.com:Enfermeira@123 \
+  | sed -n 's/.*"access_token":"\([^"]*\)".*/\1/p')
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8082/notifications/patient/10
 ```
 
 Deve retornar a notificação com `status: SENT`.
@@ -159,14 +162,19 @@ Requer Docker: os testes de integração usam Testcontainers.
 | `NotificationServiceTest` | mensagem para cada `eventStatus`, `PENDING` → `SENT`, falha no envio, evento nulo e inválido rejeitados, reentrega ignorada, `PENDING` reenviado na mesma linha, colisão entre consumidores |
 | `NotificationServicePersistenceTest` | colisão de `event_id` contra o Postgres real resulta em uma única linha |
 | `NotificationSchemaTest` | a migration cria todas as colunas e a constraint única |
-| `NotificationControllerTest` | `GET /notifications/patient/{patientId}` |
+| `NotificationControllerTest` | `GET /notifications/patient/{patientId}`: 401 sem token, 200 para NURSE e para o PATIENT dono, 403 para outro paciente |
 | `NotificationApplicationTests` | o contexto sobe com Postgres e RabbitMQ em containers |
 
 ## Segurança
 
-Este serviço ainda não exige autenticação. Na integração do auth-service, deve receber o mesmo
-`SecurityConfig` de resource server JWT que a branch do auth-service adiciona ao appointment-service
-e ao history-service: health público e demais rotas autenticadas.
+As rotas exigem um JWT do auth-service em `Authorization: Bearer <token>`; só `/actuator/health`
+é público. A role vem do claim `scope`: DOCTOR e NURSE listam as notificações de qualquer
+paciente, e PATIENT só as próprias — o `patientId` da rota precisa ser o `user_id` do token, senão
+a resposta é `403`. O consumo do RabbitMQ é interno e não usa token.
+
+A chave pública vem de `security.jwt.public-key`. No Docker é montada de `.jwt-keys/app.sub`;
+pela IDE, rodando a partir desta pasta, o padrão é `file:../.jwt-keys/app.sub`, criada ao subir o
+ambiente pela raiz. Os testes usam o par em `src/test/resources/jwt-test/`.
 
 ## Problemas comuns
 
