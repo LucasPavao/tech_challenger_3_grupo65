@@ -63,8 +63,6 @@ class SecurityConfigTest {
 
     @Test
     void shouldLetHealthEndpointThroughWithoutCredentials() throws Exception {
-        // Nesta fatia o actuator nao existe: 404 prova que a rota passou pelo filtro de seguranca,
-        // que antes respondia 401 por causa do denyAll.
         mockMvc.perform(get("/actuator/health"))
                 .andExpect(status().isNotFound());
     }
