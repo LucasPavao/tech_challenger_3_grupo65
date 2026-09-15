@@ -7,6 +7,7 @@ import org.springframework.boot.graphql.test.autoconfigure.GraphQlTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.graphql.execution.ErrorType;
 import org.springframework.graphql.test.tester.GraphQlTester;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,6 +15,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @GraphQlTest(HistoryQueryController.class)
+@WithMockUser(roles = "NURSE")
 @Import(GraphQlExceptionResolver.class)
 class GraphQlExceptionResolverTest {
 
@@ -25,7 +27,7 @@ class GraphQlExceptionResolverTest {
 
     @Test
     void traduzArgumentoInvalidoParaBadRequest() {
-        when(queryService.patientHistory(any()))
+        when(queryService.patientHistory(any(), any()))
                 .thenThrow(new IllegalArgumentException("patientId nao pode ser nulo"));
 
         graphQlTester.document("{ patientHistory(patientId: 10) { appointmentId } }")
@@ -53,7 +55,7 @@ class GraphQlExceptionResolverTest {
 
     @Test
     void naoVazaDetalheDeErroInesperado() {
-        when(queryService.patientHistory(any()))
+        when(queryService.patientHistory(any(), any()))
                 .thenThrow(new IllegalStateException("connection pool exhausted at 10.0.0.5:5432"));
 
         graphQlTester.document("{ patientHistory(patientId: 10) { appointmentId } }")
