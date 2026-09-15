@@ -35,9 +35,9 @@ services:
       DB_PORT: 5432
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
-      JWT_PUBLIC_KEY: file:/keys/app.sub
+      JWT_PUBLIC_KEY: file:/tmp/app.sub
     volumes:
-      - ../.jwt-keys:/keys:ro
+      - ../.jwt-keys/app.sub:/tmp/app.sub:ro
     ports:
       - "${SERVER_PORT}:${SERVER_PORT}"
     networks:
