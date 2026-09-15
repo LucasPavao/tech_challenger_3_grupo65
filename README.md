@@ -42,7 +42,7 @@ git clone https://github.com/LucasPavao/tech_challenger_3_grupo65
 Set-Location tech_challenger_3_grupo65
 
 # cria os .env que faltam, sem sobrescrever os existentes
-Get-ChildItem -Path . -Filter .env.example -Recurse -Depth 1 | ForEach-Object {
+Get-ChildItem -Path . -Filter .env.example -Recurse -Depth 1 -Force | ForEach-Object {
   $destino = $_.FullName -replace '\.example$', ''
   if (-not (Test-Path $destino)) { Copy-Item $_.FullName $destino; "criado $destino" }
 }
@@ -89,7 +89,15 @@ collection inteira no **Runner** com *Delay* de 500 ms. Pela linha de comando, e
 npx --yes newman@6 run docs/postman/tech-challenge-grupo65.postman_collection.json --delay-request 500
 ```
 
-Os mesmos passos com `curl` (no PowerShell, use `curl.exe` e troque `\` por `` ` `` no fim das linhas):
+Os mesmos passos com `curl`, para Linux, macOS e WSL2. No PowerShell, o login e uma consulta ficam assim:
+
+```powershell
+$basic = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('maria.santos@hospital.com:Enfermeira@123'))
+$token = (Invoke-RestMethod -Method Post -Uri http://localhost:8083/auth/login -Headers @{ Authorization = "Basic $basic" }).access_token
+Invoke-RestMethod -Uri http://localhost:8082/notifications/patient/4 -Headers @{ Authorization = "Bearer $token" }
+```
+
+Os passos abaixo usam `curl`:
 
 ### 1. Autenticar e guardar o token
 
@@ -126,8 +134,9 @@ curl -s -X POST http://localhost:8081/graphql \
 ```
 
 `appointmentTimeline` devolve a trilha completa (o `SCHEDULED` da criação e o `COMPLETED`);
-`patientHistory(patientId: "4")` devolve só o estado atual de cada consulta. O GraphiQL fica em
-<http://localhost:8081/graphiql>.
+`patientHistory(patientId: "4")` devolve só o estado atual de cada consulta.
+O GraphiQL (`/graphiql`) também exige o token, então o jeito mais simples de explorar é a pasta 3
+da collection.
 
 ### 4. Listar as notificações
 
@@ -187,7 +196,7 @@ Os testes (`./mvnw test`) não precisam de `.jwt-keys/`: cada serviço usa um pa
 `src/test/resources/jwt-test/`. Os testes de integração usam Testcontainers, então o Docker precisa estar rodando.
 
 Para regenerar o par de chaves: `docker run --rm -v "$(pwd)/.jwt-keys:/keys" alpine:3.22 rm -f /keys/app.key /keys/app.sub`
-(no PowerShell, `${PWD}` no lugar de `$(pwd)`) e suba o ambiente de novo. Tokens emitidos antes deixam de valer.
+(no PowerShell, `${PWD}` no lugar de `$(pwd)`) e recrie os containers com `docker compose up -d --force-recreate` — só `up -d` roda o `jwt-keys` de novo, mas as aplicações continuariam com o par antigo. Tokens emitidos antes deixam de valer.
 
 ## Problemas comuns
 

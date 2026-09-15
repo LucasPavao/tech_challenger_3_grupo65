@@ -17,7 +17,7 @@ services:
         rm -f /keys/app.key /keys/app.sub
         openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out /keys/app.key
         openssl pkey -pubout -in /keys/app.key -out /keys/app.sub
-        chmod 444 /keys/app.key /keys/app.sub
+        chmod 444 /keys/app.key /keys/app.sub || true
         echo "chaves JWT geradas"
 
   rabbitmq:

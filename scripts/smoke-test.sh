@@ -54,6 +54,11 @@ if [ "$http_code" != "201" ]; then
   exit 1
 fi
 APPOINTMENT_ID=$(echo "$corpo" | sed -n 's/^{"id":\([0-9]*\).*/\1/p')
+if [ -z "$APPOINTMENT_ID" ]; then
+  echo "FALHA: nao consegui ler o id do agendamento criado" >&2
+  echo "Resposta: $corpo" >&2
+  exit 1
+fi
 echo "    resposta: $corpo"
 
 echo "==> 4/5 aguardando o evento chegar no history-service via RabbitMQ"

@@ -127,6 +127,6 @@ Não precisam de banco nem de `.jwt-keys/`: usam o par só de teste em `src/test
 
 ## Segurança
 
-- A chave privada fica só em `.jwt-keys/` (ignorada pelo git) e só o auth-service a monta.
+- O par fica em `.jwt-keys/` (ignorada pelo git). No compose, a pasta é montada só leitura em `/keys` nos quatro serviços, mas só o auth-service usa a chave privada; num ambiente real, entregue aos consumidores apenas a chave pública.
 - Não reutilize as credenciais de exemplo fora do desenvolvimento.
 - Não registre tokens em logs.
