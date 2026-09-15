@@ -1,11 +1,11 @@
 {
   "info": {
-    "_postman_id": "c1be8b53-f473-4e9e-a030-7c86aec02ffe",
+    "_postman_id": "4915004a-8b64-49f3-928f-6a1482e81714",
     "name": "Tech Challenge Fase 3 — Grupo 65",
     "description": "Roteiro de teste do projeto, em ordem: 1) autenticar e guardar o token, 2) criar e evoluir um agendamento, 3) consultar o historico via GraphQL, 4) listar as notificacoes.\n\n**Antes de comecar:** suba o ambiente pela raiz (`make up`, ou `docker compose up -d --build` no Windows) e espere os 9 containers ficarem `healthy`.\n\nRode as pastas na ordem, ou a collection inteira no Runner com _Delay_ de 500 ms: historico e notificacoes chegam pelo RabbitMQ, de forma assincrona.\n\nA autenticacao Bearer `{{token}}` vale para a collection toda; so o login usa Basic Auth. O token dura 15 minutos: se aparecer 401, rode o login de novo.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "53903719",
-    "_collection_link": "https://go.postman.co/collection/53903719-c1be8b53-f473-4e9e-a030-7c86aec02ffe?source=collection_link"
+    "_collection_link": "https://go.postman.co/collection/53903719-4915004a-8b64-49f3-928f-6a1482e81714?source=collection_link"
   },
   "item": [
     {
@@ -30,12 +30,12 @@
               "basic": [
                 {
                   "key": "username",
-                  "value": "admin@hospital.com",
+                  "value": "maria.santos@hospital.com",
                   "type": "string"
                 },
                 {
                   "key": "password",
-                  "value": "Admin@123",
+                  "value": "",
                   "type": "string"
                 }
               ]
@@ -56,63 +56,13 @@
           "response": []
         },
         {
-          "name": "/auth/login - Login inválido",
-          "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "invalid@email.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "invalid@email.com",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "url": {
-              "raw": "http://localhost:8082/auth/login",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8082",
-              "path": [
-                "auth",
-                "login"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
           "name": "/users - Criação de usuário",
           "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "POST",
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"DOCTOR\"\r\n}",
+              "raw": "{\r\n  \"name\": \"Lucas Pavão\",\r\n  \"email\": \"lucasp@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"PATIENT\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -120,141 +70,10 @@
               }
             },
             "url": {
-              "raw": "http://localhost:8082/users",
-              "protocol": "http",
+              "raw": "{{authUrl}}/users",
               "host": [
-                "localhost"
+                "{{authUrl}}"
               ],
-              "port": "8082",
-              "path": [
-                "users"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "/users - Criação de usuário com credenciais inválidas",
-          "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "invalid@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "invalidpassword",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"DOCTOR\"\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "http://localhost:8082/users",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8082",
-              "path": [
-                "users"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "/users - Criação de usuário com dados de usuário inválidos",
-          "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"name\": \"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\r\n  \"email\": \"lucas.com\",\r\n  \"password\": \"21\",\r\n  \"role\": \"DOCTOR\"\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "http://localhost:8082/users",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8082",
-              "path": [
-                "users"
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "/users - Criação de usuário com role inválida",
-          "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "body": {
-              "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"INVALID_ROLE\"\r\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "url": {
-              "raw": "http://localhost:8082/users",
-              "protocol": "http",
-              "host": [
-                "localhost"
-              ],
-              "port": "8082",
               "path": [
                 "users"
               ]
@@ -265,26 +84,11 @@
         {
           "name": "/users - Atualização de usuário cadastrado",
           "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123456789",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "PUT",
             "header": [],
             "body": {
               "mode": "raw",
-              "raw": "{\r\n  \"name\": \"Administrador do Hospital\",\r\n  \"email\": \"admin@hospital.com\",\r\n  \"password\": \"Admin@123\",\r\n  \"role\": \"ADMIN\"\r\n}",
+              "raw": "{\r\n  \"name\": \"Administrador do Hospital\",\r\n  \"email\": \"admin@hospital.com\",\r\n  \"password\": \"\",\r\n  \"role\": \"ADMIN\"\r\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -292,12 +96,10 @@
               }
             },
             "url": {
-              "raw": "http://localhost:8082/users/1",
-              "protocol": "http",
+              "raw": "{{authUrl}}/users/1",
               "host": [
-                "localhost"
+                "{{authUrl}}"
               ],
-              "port": "8082",
               "path": [
                 "users",
                 "1"
@@ -309,30 +111,13 @@
         {
           "name": "/users - Busca de todos os usuários cadastrados",
           "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "http://localhost:8082/users",
-              "protocol": "http",
+              "raw": "{{authUrl}}/users",
               "host": [
-                "localhost"
+                "{{authUrl}}"
               ],
-              "port": "8082",
               "path": [
                 "users"
               ]
@@ -343,30 +128,13 @@
         {
           "name": "/users - Busca de um usuário por ID",
           "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "admin@hospital.com",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "Admin@123",
-                  "type": "string"
-                }
-              ]
-            },
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "http://localhost:8082/users/1",
-              "protocol": "http",
+              "raw": "{{authUrl}}/users/1",
               "host": [
-                "localhost"
+                "{{authUrl}}"
               ],
-              "port": "8082",
               "path": [
                 "users",
                 "1"
@@ -708,7 +476,7 @@
     "bearer": [
       {
         "key": "token",
-        "value": "{{accessToken}}",
+        "value": "{{token}}",
         "type": "string"
       }
     ]
