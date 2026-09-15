@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Component
@@ -29,6 +30,8 @@ public class JwtService {
         String scopes = authentication.getAuthorities()
                 .stream()
                 .map(GrantedAuthority::getAuthority)
+                .filter(Objects::nonNull)
+                .filter(auth -> auth.startsWith("ROLE_"))
                 .collect(Collectors.joining(" "));
 
         var claims = JwtClaimsSet.builder()
