@@ -1,15 +1,714 @@
 {
   "info": {
+    "_postman_id": "c1be8b53-f473-4e9e-a030-7c86aec02ffe",
     "name": "Tech Challenge Fase 3 — Grupo 65",
-    "description": "Roteiro de teste do projeto, em ordem: 1) autenticar e guardar o token, 2) criar e evoluir um agendamento, 3) consultar o historico via GraphQL, 4) listar as notificacoes.\n\n**Antes de comecar:** suba o ambiente pela raiz (`make up`, ou `docker compose up -d --build` no Windows) e espere os 9 containers ficarem `healthy`.\n\nRode as pastas na ordem, ou a collection inteira no Runner com *Delay* de 500 ms: historico e notificacoes chegam pelo RabbitMQ, de forma assincrona.\n\nA autenticacao Bearer `{{token}}` vale para a collection toda; so o login usa Basic Auth. O token dura 15 minutos: se aparecer 401, rode o login de novo.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    "description": "Roteiro de teste do projeto, em ordem: 1) autenticar e guardar o token, 2) criar e evoluir um agendamento, 3) consultar o historico via GraphQL, 4) listar as notificacoes.\n\n**Antes de comecar:** suba o ambiente pela raiz (`make up`, ou `docker compose up -d --build` no Windows) e espere os 9 containers ficarem `healthy`.\n\nRode as pastas na ordem, ou a collection inteira no Runner com _Delay_ de 500 ms: historico e notificacoes chegam pelo RabbitMQ, de forma assincrona.\n\nA autenticacao Bearer `{{token}}` vale para a collection toda; so o login usa Basic Auth. O token dura 15 minutos: se aparecer 401, rode o login de novo.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "53903719",
+    "_collection_link": "https://go.postman.co/collection/53903719-c1be8b53-f473-4e9e-a030-7c86aec02ffe?source=collection_link"
   },
+  "item": [
+    {
+      "name": "1. Auth Service",
+      "item": [
+        {
+          "name": "/auth/login - Criação de token para acesso às APIs",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));\r\nconst b = pm.response.json();\r\npm.test('devolve access_token', () => pm.expect(b.access_token).to.be.a('string').and.not.empty);\r\n// guarda o token para todas as requisicoes seguintes\r\npm.collectionVariables.set('token', b.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{authUrl}}/auth/login",
+              "host": [
+                "{{authUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/auth/login - Login inválido",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "invalid@email.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "invalid@email.com",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8082/auth/login",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Criação de usuário",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"DOCTOR\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/users",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Criação de usuário com credenciais inválidas",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "invalid@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "invalidpassword",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"DOCTOR\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/users",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Criação de usuário com dados de usuário inválidos",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\",\r\n  \"email\": \"lucas.com\",\r\n  \"password\": \"21\",\r\n  \"role\": \"DOCTOR\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/users",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Criação de usuário com role inválida",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Dr. Lucas\",\r\n  \"email\": \"lucas@hospital.com\",\r\n  \"password\": \"Lucas$Hospital@999\",\r\n  \"role\": \"INVALID_ROLE\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/users",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Atualização de usuário cadastrado",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123456789",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "PUT",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Administrador do Hospital\",\r\n  \"email\": \"admin@hospital.com\",\r\n  \"password\": \"Admin@123\",\r\n  \"role\": \"ADMIN\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "http://localhost:8082/users/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Busca de todos os usuários cadastrados",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8082/users",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "/users - Busca de um usuário por ID",
+          "request": {
+            "auth": {
+              "type": "basic",
+              "basic": [
+                {
+                  "key": "username",
+                  "value": "admin@hospital.com",
+                  "type": "string"
+                },
+                {
+                  "key": "password",
+                  "value": "Admin@123",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:8082/users/1",
+              "protocol": "http",
+              "host": [
+                "localhost"
+              ],
+              "port": "8082",
+              "path": [
+                "users",
+                "1"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Appointment",
+      "item": [
+        {
+          "name": "Criar agendamento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// appointmentDate precisa estar no futuro (validacao @Future)",
+                  "const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('appointmentDate', d.toISOString().slice(0, 19));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const b = pm.response.json();",
+                  "pm.test('nasce SCHEDULED', () => pm.expect(b.status).to.eql('SCHEDULED'));",
+                  "pm.collectionVariables.set('appointmentId', b.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{appointmentDate}}\",\n  \"description\": \"Consulta de rotina - cardiologia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{appointmentUrl}}/appointments",
+              "host": [
+                "{{appointmentUrl}}"
+              ],
+              "path": [
+                "appointments"
+              ]
+            },
+            "description": "Somente NURSE cria agendamentos. Salva o `id` em `appointmentId`."
+          },
+          "response": []
+        },
+        {
+          "name": "Buscar agendamento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('e o agendamento criado', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('appointmentId'))));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{appointmentUrl}}/appointments/{{appointmentId}}",
+              "host": [
+                "{{appointmentUrl}}"
+              ],
+              "path": [
+                "appointments",
+                "{{appointmentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Remarcar agendamento",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// nova data, tambem no futuro: gera o evento RESCHEDULED",
+                  "const d = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);",
+                  "pm.collectionVariables.set('appointmentDate', d.toISOString().slice(0, 19));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('data mudou', () => pm.expect(pm.response.json().appointmentDate).to.include(pm.collectionVariables.get('appointmentDate').slice(0, 10)));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{appointmentDate}}\",\n  \"description\": \"Consulta remarcada - cardiologia\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{appointmentUrl}}/appointments/{{appointmentId}}",
+              "host": [
+                "{{appointmentUrl}}"
+              ],
+              "path": [
+                "appointments",
+                "{{appointmentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Concluir atendimento",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('ficou COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{appointmentUrl}}/appointments/{{appointmentId}}/status",
+              "host": [
+                "{{appointmentUrl}}"
+              ],
+              "path": [
+                "appointments",
+                "{{appointmentId}}",
+                "status"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Histórico (GraphQL)",
+      "item": [
+        {
+          "name": "patientHistory — estado atual de cada consulta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);",
+                  "const id = String(pm.collectionVariables.get('appointmentId'));",
+                  "pm.test('contem o agendamento criado', () => pm.expect(b.data.patientHistory.map(r => r.appointmentId)).to.include(id));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($pid: ID!) {\n  patientHistory(patientId: $pid) {\n    appointmentId\n    eventStatus\n    appointmentDate\n    description\n  }\n}",
+                "variables": "{\n  \"pid\": \"{{patientId}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{historyUrl}}/graphql",
+              "host": [
+                "{{historyUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Ultimo evento de cada consulta do paciente."
+          },
+          "response": []
+        },
+        {
+          "name": "appointmentTimeline — trilha da consulta",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);",
+                  "pm.test('comeca pelo SCHEDULED', () => pm.expect(b.data.appointmentTimeline[0].eventStatus).to.eql('SCHEDULED'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query ($aid: ID!) {\n  appointmentTimeline(appointmentId: $aid) {\n    eventStatus\n    appointmentDate\n    occurredAt\n  }\n}",
+                "variables": "{\n  \"aid\": \"{{appointmentId}}\"\n}"
+              }
+            },
+            "url": {
+              "raw": "{{historyUrl}}/graphql",
+              "host": [
+                "{{historyUrl}}"
+              ],
+              "path": [
+                "graphql"
+              ]
+            },
+            "description": "Todos os eventos da consulta, do mais antigo ao mais recente."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Notificações",
+      "item": [
+        {
+          "name": "Notificações do paciente",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const b = pm.response.json();",
+                  "const id = Number(pm.collectionVariables.get('appointmentId'));",
+                  "pm.test('notificacao do agendamento enviada', () => pm.expect(b.some(n => n.appointmentId === id && n.status === 'SENT')).to.be.true);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{notificationUrl}}/notifications/patient/{{patientId}}",
+              "host": [
+                "{{notificationUrl}}"
+              ],
+              "path": [
+                "notifications",
+                "patient",
+                "{{patientId}}"
+              ]
+            },
+            "description": "Uma notificacao por evento do agendamento, todas com status SENT."
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
   "auth": {
     "type": "bearer",
     "bearer": [
       {
         "key": "token",
-        "value": "{{token}}",
+        "value": "{{accessToken}}",
         "type": "string"
       }
     ]
@@ -58,308 +757,6 @@
     {
       "key": "appointmentDate",
       "value": ""
-    }
-  ],
-  "item": [
-    {
-      "name": "1. Autenticação",
-      "item": [
-        {
-          "name": "Login da enfermeira",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "const b = pm.response.json();",
-                  "pm.test('devolve access_token', () => pm.expect(b.access_token).to.be.a('string').and.not.empty);",
-                  "// guarda o token para todas as requisicoes seguintes",
-                  "pm.collectionVariables.set('token', b.access_token);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "auth": {
-              "type": "basic",
-              "basic": [
-                {
-                  "key": "username",
-                  "value": "{{loginEmail}}",
-                  "type": "string"
-                },
-                {
-                  "key": "password",
-                  "value": "{{loginSenha}}",
-                  "type": "string"
-                }
-              ]
-            },
-            "method": "POST",
-            "header": [],
-            "url": "{{authUrl}}/auth/login",
-            "description": "Basic Auth com e-mail e senha da enfermeira de exemplo. Salva o `access_token` na variavel `token`."
-          }
-        }
-      ]
-    },
-    {
-      "name": "2. Appointment",
-      "item": [
-        {
-          "name": "Criar agendamento",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// appointmentDate precisa estar no futuro (validacao @Future)",
-                  "const d = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);",
-                  "pm.collectionVariables.set('appointmentDate', d.toISOString().slice(0, 19));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 201', () => pm.response.to.have.status(201));",
-                  "const b = pm.response.json();",
-                  "pm.test('nasce SCHEDULED', () => pm.expect(b.status).to.eql('SCHEDULED'));",
-                  "pm.collectionVariables.set('appointmentId', b.id);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{appointmentUrl}}/appointments",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{appointmentDate}}\",\n  \"description\": \"Consulta de rotina - cardiologia\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            },
-            "description": "Somente NURSE cria agendamentos. Salva o `id` em `appointmentId`."
-          }
-        },
-        {
-          "name": "Buscar agendamento",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('e o agendamento criado', () => pm.expect(pm.response.json().id).to.eql(Number(pm.collectionVariables.get('appointmentId'))));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}"
-          }
-        },
-        {
-          "name": "Remarcar agendamento",
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// nova data, tambem no futuro: gera o evento RESCHEDULED",
-                  "const d = new Date(Date.now() + 45 * 24 * 60 * 60 * 1000);",
-                  "pm.collectionVariables.set('appointmentDate', d.toISOString().slice(0, 19));"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('data mudou', () => pm.expect(pm.response.json().appointmentDate).to.include(pm.collectionVariables.get('appointmentDate').slice(0, 10)));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "PUT",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"patientId\": {{patientId}},\n  \"doctorId\": {{doctorId}},\n  \"appointmentDate\": \"{{appointmentDate}}\",\n  \"description\": \"Consulta remarcada - cardiologia\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        },
-        {
-          "name": "Concluir atendimento",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('ficou COMPLETED', () => pm.expect(pm.response.json().status).to.eql('COMPLETED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{appointmentUrl}}/appointments/{{appointmentId}}/status",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"status\": \"COMPLETED\"\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "3. Histórico (GraphQL)",
-      "item": [
-        {
-          "name": "patientHistory — estado atual de cada consulta",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "const b = pm.response.json();",
-                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);",
-                  "const id = String(pm.collectionVariables.get('appointmentId'));",
-                  "pm.test('contem o agendamento criado', () => pm.expect(b.data.patientHistory.map(r => r.appointmentId)).to.include(id));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{historyUrl}}/graphql",
-            "body": {
-              "mode": "graphql",
-              "graphql": {
-                "query": "query ($pid: ID!) {\n  patientHistory(patientId: $pid) {\n    appointmentId\n    eventStatus\n    appointmentDate\n    description\n  }\n}",
-                "variables": "{\n  \"pid\": \"{{patientId}}\"\n}"
-              }
-            },
-            "description": "Ultimo evento de cada consulta do paciente."
-          }
-        },
-        {
-          "name": "appointmentTimeline — trilha da consulta",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "const b = pm.response.json();",
-                  "pm.test('sem erros GraphQL', () => pm.expect(b.errors, JSON.stringify(b.errors)).to.be.undefined);",
-                  "pm.test('comeca pelo SCHEDULED', () => pm.expect(b.data.appointmentTimeline[0].eventStatus).to.eql('SCHEDULED'));"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": "{{historyUrl}}/graphql",
-            "body": {
-              "mode": "graphql",
-              "graphql": {
-                "query": "query ($aid: ID!) {\n  appointmentTimeline(appointmentId: $aid) {\n    eventStatus\n    appointmentDate\n    occurredAt\n  }\n}",
-                "variables": "{\n  \"aid\": \"{{appointmentId}}\"\n}"
-              }
-            },
-            "description": "Todos os eventos da consulta, do mais antigo ao mais recente."
-          }
-        }
-      ]
-    },
-    {
-      "name": "4. Notificações",
-      "item": [
-        {
-          "name": "Notificações do paciente",
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.response.to.have.status(200));",
-                  "const b = pm.response.json();",
-                  "const id = Number(pm.collectionVariables.get('appointmentId'));",
-                  "pm.test('notificacao do agendamento enviada', () => pm.expect(b.some(n => n.appointmentId === id && n.status === 'SENT')).to.be.true);"
-                ]
-              }
-            }
-          ],
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": "{{notificationUrl}}/notifications/patient/{{patientId}}",
-            "description": "Uma notificacao por evento do agendamento, todas com status SENT."
-          }
-        }
-      ]
     }
   ]
 }
